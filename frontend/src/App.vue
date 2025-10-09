@@ -29,10 +29,20 @@
       </div>
 
       <!-- Game View -->
-      <div v-if="gameState.phase === 'RUNNING'" class="views-container">
-        <TopDownView :game-state="gameState" />
-        <div class="fpv-container">
-          <FirstPersonView :game-state="gameState" :player-id="playerId" />
+      <div v-if="gameState.phase === 'RUNNING'" class="game-running-container">
+        <div class="scores-container">
+            <h2>Scores</h2>
+            <ul>
+                <li v-for="player in sortedPlayersByScore" :key="player.id">
+                    {{ player.name }}: {{ player.score }}
+                </li>
+            </ul>
+        </div>
+        <div class="views-container">
+          <TopDownView :game-state="gameState" />
+          <div class="fpv-container">
+            <FirstPersonView :game-state="gameState" :player-id="playerId" />
+          </div>
         </div>
       </div>
 
@@ -41,6 +51,14 @@
         <h1>Game Over</h1>
         <h2 v-if="winnerName">Winner: {{ winnerName }}</h2>
         <h2 v-else>It's a tie!</h2>
+        <div class="final-scores">
+            <h3>Final Scores</h3>
+            <ul>
+                <li v-for="player in sortedPlayersByScore" :key="player.id">
+                    {{ player.name }}: {{ player.score }}
+                </li>
+            </ul>
+        </div>
         <button @click="resetGame">Start Again</button>
       </div>
     </div>
@@ -84,6 +102,11 @@ const winnerName = computed(() => {
     if (!gameState.value || !gameState.value.winner) return null;
     const winnerId = gameState.value.winner;
     return gameState.value.players[winnerId]?.name || 'Unknown';
+});
+
+const sortedPlayersByScore = computed(() => {
+    if (!gameState.value) return [];
+    return Object.values(gameState.value.players).sort((a, b) => b.score - a.score);
 });
 
 const sendMessage = (message) => {
@@ -290,6 +313,29 @@ onUnmounted(() => {
 
 .hard-reset-btn:hover {
   background-color: #c0392b !important;
+}
+
+.game-running-container {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 30px;
+}
+
+.scores-container {
+  padding: 20px;
+  background-color: #2c3e50;
+  border-radius: 8px;
+  min-width: 200px;
+}
+
+.scores-container h2 {
+    margin-top: 0;
+}
+
+.scores-container ul {
+    list-style: none;
+    padding: 0;
 }
 
 .views-container {
