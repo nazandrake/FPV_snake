@@ -4,11 +4,10 @@ object AIPlayer {
     fun getNextDirection(gameState: GameState, aiPlayerId: String): Direction {
         val aiPlayer = gameState.players[aiPlayerId] ?: return Direction.RIGHT
         val food = gameState.food
-        val boardSize = gameState.boardSize
         val head = aiPlayer.snake.first()
 
-        val possibleMoves = mutableListOf(Direction.UP, Direction.DOWN, Direction.LEFT, Direction.RIGHT)
-        // Avoid reversing
+        // 1. Determine all possible non-reversing moves.
+        val possibleMoves = Direction.entries.toMutableSet()
         when (aiPlayer.direction) {
             Direction.UP -> possibleMoves.remove(Direction.DOWN)
             Direction.DOWN -> possibleMoves.remove(Direction.UP)
@@ -16,22 +15,26 @@ object AIPlayer {
             Direction.RIGHT -> possibleMoves.remove(Direction.LEFT)
         }
 
-        // Simple pathfinding: move towards food
-        val preferredMoves = mutableListOf<Direction>()
-        if (head.x < food.x) preferredMoves.add(Direction.RIGHT)
-        if (head.x > food.x) preferredMoves.add(Direction.LEFT)
-        if (head.y < food.y) preferredMoves.add(Direction.DOWN)
-        if (head.y > food.y) preferredMoves.add(Direction.UP)
+        // 2. Find all safe moves from the possible moves.
+        val safeMoves = possibleMoves.filter { isSafe(it, head, gameState, aiPlayer) }
 
-        // Filter out unsafe moves
-        val safeMoves = preferredMoves.filter { isSafe(it, head, gameState, aiPlayer) }
-        if (safeMoves.isNotEmpty()) {
-            return safeMoves.first()
+        // If no moves are safe, well, we're doomed. Continue in the current direction.
+        if (safeMoves.isEmpty()) {
+            return aiPlayer.direction
         }
 
-        // If preferred moves are unsafe, try any safe move
-        val anySafeMove = possibleMoves.filter { isSafe(it, head, gameState, aiPlayer) }
-        return anySafeMove.firstOrNull() ?: aiPlayer.direction // If no safe move, continue in the same direction
+        // 3. From the safe moves, which ones move us closer to the food?
+        val preferredMoves = safeMoves.filter {
+            when (it) {
+                Direction.UP -> head.y > food.y
+                Direction.DOWN -> head.y < food.y
+                Direction.LEFT -> head.x > food.x
+                Direction.RIGHT -> head.x < food.x
+            }
+        }
+
+        // 4. If there are preferred safe moves, choose one randomly. Otherwise, choose any safe move randomly.
+        return (preferredMoves.ifEmpty { safeMoves }).random()
     }
 
     private fun isSafe(direction: Direction, head: Point, gameState: GameState, player: Player): Boolean {

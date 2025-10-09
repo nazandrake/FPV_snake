@@ -23,7 +23,7 @@ data class GameState(
 class Game {
     private val players = ConcurrentHashMap<String, Player>()
     private lateinit var food: Point
-    private val boardSize = 20
+    private val boardSize = 60
     var phase = GamePhase.LOBBY
         private set
     private var winner: String? = null
@@ -37,30 +37,38 @@ class Game {
     }
 
     fun addPlayer(id: String) {
-        if (players.size < 2) {
-            val color = if (players.isEmpty()) "#ff0000" else "#0000ff"
-            val startX = if (players.isEmpty()) 5 else 15
-            val snake = mutableListOf(Point(startX, 10))
-            players[id] = Player(id = id, snake = snake, direction = Direction.RIGHT, color = color, name = "Player ${players.size + 1}")
-        }
+        // Allow multiple players
+        val colors = listOf("#ff0000", "#0000ff", "#00ff00", "#ffff00")
+        val startPositions = listOf(Point(5, 10), Point(55, 10), Point(5, 50), Point(55, 50))
+        val playerIndex = players.size
+
+        val color = colors.getOrElse(playerIndex) { "#ffffff" } // Default to white
+        val startPoint = startPositions.getOrElse(playerIndex) { Point(10, 10) }
+
+        val snake = mutableListOf(startPoint)
+        players[id] = Player(id = id, snake = snake, direction = Direction.RIGHT, color = color, name = "Player ${playerIndex + 1}")
     }
 
     fun addAiPlayer() {
-        if (players.size < 2) {
-            val aiId = "ai-player-${(1000..9999).random()}"
-            val color = "#00ff00"
-            val startX = if (players.isEmpty()) 5 else 15
-            val snake = mutableListOf(Point(startX, 10))
-            players[aiId] = Player(
-                id = aiId,
-                snake = snake,
-                direction = Direction.RIGHT,
-                color = color,
-                name = "Computer",
-                isAi = true,
-                ready = true
-            )
-        }
+        // Allow multiple players
+        val colors = listOf("#ff0000", "#0000ff", "#00ff00", "#ffff00")
+        val startPositions = listOf(Point(5, 10), Point(55, 10), Point(5, 50), Point(55, 50))
+        val playerIndex = players.size
+
+        val aiId = "ai-player-${(1000..9999).random()}"
+        val color = colors.getOrElse(playerIndex) { "#ffffff" }
+        val startPoint = startPositions.getOrElse(playerIndex) { Point(15, 15) }
+
+        val snake = mutableListOf(startPoint)
+        players[aiId] = Player(
+            id = aiId,
+            snake = snake,
+            direction = Direction.RIGHT,
+            color = color,
+            name = "Computer",
+            isAi = true,
+            ready = true
+        )
     }
 
     fun removePlayer(id: String) {

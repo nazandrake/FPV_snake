@@ -28,12 +28,10 @@
       </div>
 
       <!-- Game View -->
-      <div v-if="gameState.phase === 'RUNNING'">
-        <div class="views-container">
-          <div class="fpv-container">
-            <FirstPersonView :game-state="gameState" :player-id="playerId" />
-          </div>
-          <TopDownView :game-state="gameState" />
+      <div v-if="gameState.phase === 'RUNNING'" class="views-container">
+        <TopDownView :game-state="gameState" />
+        <div class="fpv-container">
+          <FirstPersonView :game-state="gameState" :player-id="playerId" />
         </div>
       </div>
 
@@ -90,21 +88,21 @@ const sendMessage = (message) => {
 
 const setPlayerName = () => {
   if (playerName.value.trim()) {
-    sendMessage({ type: 'com.example.ClientMessage.SetPlayerName', name: playerName.value.trim() });
+    sendMessage({ type: 'SetPlayerName', name: playerName.value.trim() });
     isNameSet.value = true;
   }
 };
 
 const setReady = () => {
-  sendMessage({ type: 'com.example.ClientMessage.PlayerReady', isReady: true });
+  sendMessage({ type: 'PlayerReady', isReady: true });
 };
 
 const resetGame = () => {
-  sendMessage({ type: 'com.example.ClientMessage.ResetGame' });
+  sendMessage({ type: 'ResetGame' });
 };
 
 const addAiPlayer = () => {
-  sendMessage({ type: 'com.example.ClientMessage.AddAiPlayer' });
+  sendMessage({ type: 'AddAiPlayer' });
 };
 
 const connectWebSocket = () => {
@@ -172,7 +170,7 @@ const handleKeyPress = (e) => {
   }
 
   if (direction) {
-    sendMessage({ type: 'com.example.ClientMessage.ChangeDirection', direction: direction });
+    sendMessage({ type: 'ChangeDirection', direction: direction });
   }
 };
 
@@ -275,17 +273,19 @@ onUnmounted(() => {
   justify-content: center;
   align-items: flex-start;
   gap: 20px;
+  width: 100%;
 }
 
 .fpv-container {
-  position: absolute;
-  top: 10px;
-  left: 10px;
   border: 2px solid #ccc;
   border-radius: 5px;
   background-color: #000;
-  width: 300px;
-  height: 200px;
+  width: 400px; /* Adjusted width */
+  height: 300px; /* Adjusted height */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .game-over {
