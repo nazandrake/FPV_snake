@@ -5,11 +5,18 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
 @Serializable
+enum class GamePhase {
+    LOBBY,
+    RUNNING,
+    GAME_OVER
+}
+
+@Serializable
 data class GameState(
     val players: Map<String, Player>,
     val food: Point,
     val boardSize: Int,
-    val gameOver: Boolean = false,
+    val phase: GamePhase,
     val winner: String? = null
 )
 
@@ -17,7 +24,8 @@ class Game {
     private val players = ConcurrentHashMap<String, Player>()
     private lateinit var food: Point
     private val boardSize = 20
-    private var gameOver = false
+    var phase = GamePhase.LOBBY
+        private set
     private var winner: String? = null
 
     init {
@@ -25,7 +33,7 @@ class Game {
     }
 
     fun getGameState(): GameState {
-        return GameState(players, food, boardSize, gameOver, winner)
+        return GameState(players, food, boardSize, phase, winner)
     }
 
     fun addPlayer(id: String) {
@@ -33,16 +41,46 @@ class Game {
             val color = if (players.isEmpty()) "#ff0000" else "#0000ff"
             val startX = if (players.isEmpty()) 5 else 15
             val snake = mutableListOf(Point(startX, 10))
-            players[id] = Player(id, snake, Direction.RIGHT, color)
+            players[id] = Player(id = id, snake = snake, direction = Direction.RIGHT, color = color, name = "Player ${players.size + 1}")
         }
     }
 
     fun removePlayer(id: String) {
         players.remove(id)
-        if (players.size < 2) {
-            gameOver = true
+        if (phase == GamePhase.RUNNING && players.size < 2) {
+            phase = GamePhase.GAME_OVER
             winner = players.keys.firstOrNull()
         }
+    }
+
+    fun setPlayerName(id: String, name: String) {
+        players[id]?.name = name
+    }
+
+    fun setPlayerReady(id: String, isReady: Boolean) {
+        players[id]?.ready = isReady
+        if (phase == GamePhase.LOBBY && players.size > 1 && players.values.all { it.ready }) {
+            startGame()
+        }
+    }
+
+    private fun startGame() {
+        phase = GamePhase.RUNNING
+    }
+
+    fun resetGame() {
+        phase = GamePhase.LOBBY
+        winner = null
+        // Reset players
+        players.values.forEachIndexed { index, player ->
+            player.score = 0
+            player.ready = false
+            player.direction = Direction.RIGHT
+            val startX = if (index == 0) 5 else 15
+            player.snake.clear()
+            player.snake.add(Point(startX, 10))
+        }
+        food = generateFood()
     }
 
     fun changeDirection(id: String, newDirection: Direction) {
@@ -59,7 +97,7 @@ class Game {
     }
 
     fun update() {
-        if (gameOver || players.size < 2) return
+        if (phase != GamePhase.RUNNING) return
 
         moveSnakes()
         checkCollisions()
@@ -109,7 +147,7 @@ class Game {
         }
 
         if (losers.isNotEmpty()) {
-            gameOver = true
+            phase = GamePhase.GAME_OVER
             if (losers.size == players.size) {
                 // It's a tie
                 winner = null

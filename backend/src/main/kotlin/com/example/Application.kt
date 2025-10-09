@@ -10,6 +10,10 @@ import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
 
 fun main() {
     embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module)
@@ -17,12 +21,29 @@ fun main() {
 }
 
 fun Application.module() {
+    val json = Json {
+        classDiscriminator = "type"
+        serializersModule = SerializersModule {
+            polymorphic(ServerMessage::class) {
+                subclass(ServerMessage.AssignPlayerId::class)
+                subclass(ServerMessage.GameStateUpdate::class)
+            }
+            polymorphic(ClientMessage::class) {
+                subclass(ClientMessage.SetPlayerName::class)
+                subclass(ClientMessage.PlayerReady::class)
+                subclass(ClientMessage.ResetGame::class)
+                subclass(ClientMessage.ChangeDirection::class)
+            }
+        }
+        encodeDefaults = true
+    }
+
     install(ContentNegotiation) {
-        json()
+        json(json)
     }
     install(WebSockets)
 
-    val gameController = GameController()
+    val gameController = GameController(json)
     // Launch the game loop in a separate coroutine
     launch {
         gameController.gameLoop()

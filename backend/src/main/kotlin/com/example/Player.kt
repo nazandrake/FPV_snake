@@ -5,10 +5,12 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class Player(
     val id: String,
+    var name: String = "Player",
     var snake: MutableList<Point>,
     var direction: Direction,
     val color: String,
-    var score: Int = 0
+    var score: Int = 0,
+    var ready: Boolean = false
 )
 
 @Serializable

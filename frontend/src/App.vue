@@ -1,44 +1,97 @@
 <template>
   <div class="game-container">
+    <!-- Connection Loading Screen -->
     <div v-if="!connected" class="loading">Connecting to server...</div>
-    <div v-if="connected && !gameStarted" class="loading">Waiting for another player...</div>
 
-    <div v-if="gameState">
-      <div class="views-container">
-        <!-- First Person View -->
-        <div class="fpv-container">
-          <FirstPersonView :game-state="gameState" :player-id="playerId" />
+    <!-- Name Input Screen -->
+    <div v-if="connected && !isNameSet" class="name-input-container">
+      <input v-model="playerName" @keyup.enter="setPlayerName" placeholder="Enter your name" />
+      <button @click="setPlayerName">Join Game</button>
+    </div>
+
+    <!-- Game Content -->
+    <div v-if="connected && isNameSet && gameState">
+      <!-- Lobby View -->
+      <div v-if="gameState.phase === 'LOBBY'" class="lobby-container">
+        <h1>Lobby</h1>
+        <ul class="player-list">
+          <li v-for="player in gameState.players" :key="player.id">
+            {{ player.name }} - <span :class="{ 'ready': player.ready, 'not-ready': !player.ready }">{{ player.ready ? 'Ready' : 'Not Ready' }}</span>
+          </li>
+        </ul>
+        <button @click="setReady" :disabled="isPlayerReady">
+          {{ isPlayerReady ? 'Waiting for others...' : 'I\'m Ready!' }}
+        </button>
+      </div>
+
+      <!-- Game View -->
+      <div v-if="gameState.phase === 'RUNNING'">
+        <div class="views-container">
+          <div class="fpv-container">
+            <FirstPersonView :game-state="gameState" :player-id="playerId" />
+          </div>
+          <TopDownView :game-state="gameState" />
         </div>
-
-        <!-- Top Down View -->
-        <TopDownView :game-state="gameState" />
       </div>
 
       <!-- Game Over Screen -->
-      <div v-if="gameState.gameOver" class="game-over">
+      <div v-if="gameState.phase === 'GAME_OVER'" class="game-over">
         <h1>Game Over</h1>
-        <h2 v-if="gameState.winner">Winner: {{ gameState.winner }}</h2>
+        <h2 v-if="winnerName">Winner: {{ winnerName }}</h2>
         <h2 v-else>It's a tie!</h2>
+        <button @click="resetGame">Start Again</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import TopDownView from './components/TopDownView.vue';
 import FirstPersonView from './components/FirstPersonView.vue';
 
 const connected = ref(false);
-const gameStarted = ref(false);
 const gameState = ref(null);
 const playerId = ref(null);
+const playerName = ref('');
+const isNameSet = ref(false);
 let socket = null;
 
 // Audio setup
 const eatSound = new Audio('/eat.mp3');
 const winSound = new Audio('/win.mp3');
 const loseSound = new Audio('/lose.mp3');
+
+const isPlayerReady = computed(() => {
+  return gameState.value?.players[playerId.value]?.ready || false;
+});
+
+const winnerName = computed(() => {
+    if (!gameState.value || !gameState.value.winner) return null;
+    const winnerId = gameState.value.winner;
+    return gameState.value.players[winnerId]?.name || 'Unknown';
+});
+
+const sendMessage = (message) => {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(message));
+  }
+};
+
+const setPlayerName = () => {
+  if (playerName.value.trim()) {
+    sendMessage({ type: 'com.example.ClientMessage.SetPlayerName', name: playerName.value.trim() });
+    isNameSet.value = true;
+  }
+};
+
+const setReady = () => {
+  sendMessage({ type: 'com.example.ClientMessage.PlayerReady', isReady: true });
+};
+
+const resetGame = () => {
+  sendMessage({ type: 'com.example.ClientMessage.ResetGame' });
+};
 
 const connectWebSocket = () => {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -50,44 +103,31 @@ const connectWebSocket = () => {
   };
 
   socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
+    const message = JSON.parse(event.data);
     const oldState = gameState.value;
-    gameState.value = data;
 
-    if (!playerId.value) {
-        // very hacky way to get player id
-        if (Object.keys(data.players).length == 1)
-            playerId.value = Object.keys(data.players)[0];
-        else if (Object.keys(data.players).length == 2 && playerId.value == null){
-            // this is the second player to join, we need to find our id
-            // this is not a good way to do this
-            // but we don't have a good way to get the player id from the server
-            // so we will just find the player that is not the other player
-            const otherPlayerId = Object.keys(gameState.value.players).find(id => id !== playerId.value);
-            if(otherPlayerId)
-                playerId.value = otherPlayerId;
+    if (message.type.endsWith('.AssignPlayerId')) {
+      playerId.value = message.id;
+    } else if (message.type.endsWith('.GameStateUpdate')) {
+      gameState.value = message.gameState;
+
+      // Sound logic
+      if (oldState) {
+        const myPlayer = playerId.value ? gameState.value.players[playerId.value] : null;
+        const oldPlayer = playerId.value ? oldState.players[playerId.value] : null;
+
+        // Food eaten
+        if (myPlayer && oldPlayer && myPlayer.score > oldPlayer.score) {
+          eatSound.play();
         }
-    }
 
-    if (Object.keys(data.players).length === 2) {
-      gameStarted.value = true;
-    }
-
-    // Sound logic
-    if (oldState) {
-      // Food eaten
-      const myPlayer = playerId.value ? data.players[playerId.value] : null;
-      const oldPlayer = playerId.value ? oldState.players[playerId.value] : null;
-      if (myPlayer && oldPlayer && myPlayer.score > oldPlayer.score) {
-        eatSound.play();
-      }
-
-      // Game over
-      if (data.gameOver && !oldState.gameOver) {
-        if (data.winner === playerId.value) {
-          winSound.play();
-        } else {
-          loseSound.play();
+        // Game over
+        if (gameState.value.phase === 'GAME_OVER' && oldState.phase === 'RUNNING') {
+          if (gameState.value.winner === playerId.value) {
+            winSound.play();
+          } else {
+            loseSound.play();
+          }
         }
       }
     }
@@ -96,8 +136,8 @@ const connectWebSocket = () => {
   socket.onclose = () => {
     console.log("WebSocket disconnected.");
     connected.value = false;
-    gameStarted.value = false;
-    gameState.value = null; // Reset game state
+    isNameSet.value = false;
+    gameState.value = null;
   };
 
   socket.onerror = (error) => {
@@ -107,26 +147,18 @@ const connectWebSocket = () => {
 };
 
 const handleKeyPress = (e) => {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN || gameState.value?.phase !== 'RUNNING') return;
 
   let direction = null;
   switch (e.key) {
-    case 'ArrowUp':
-      direction = 'UP';
-      break;
-    case 'ArrowDown':
-      direction = 'DOWN';
-      break;
-    case 'ArrowLeft':
-      direction = 'LEFT';
-      break;
-    case 'ArrowRight':
-      direction = 'RIGHT';
-      break;
+    case 'ArrowUp': direction = 'UP'; break;
+    case 'ArrowDown': direction = 'DOWN'; break;
+    case 'ArrowLeft': direction = 'LEFT'; break;
+    case 'ArrowRight': direction = 'RIGHT'; break;
   }
 
   if (direction) {
-    socket.send(JSON.stringify(direction));
+    sendMessage({ type: 'com.example.ClientMessage.ChangeDirection', direction: direction });
   }
 };
 
@@ -149,10 +181,66 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  font-family: 'Arial', sans-serif;
+  color: #fff;
 }
 
-.loading {
+.loading, .name-input-container, .lobby-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
   font-size: 2em;
+}
+
+.name-input-container input {
+  font-size: 1em;
+  padding: 10px;
+  margin-bottom: 20px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+.name-input-container button, .lobby-container button, .game-over button {
+  font-size: 1em;
+  padding: 10px 20px;
+  border-radius: 5px;
+  border: none;
+  background-color: #2ecc71;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.name-input-container button:hover, .lobby-container button:hover, .game-over button:hover {
+  background-color: #27ae60;
+}
+
+.lobby-container h1 {
+  margin-bottom: 40px;
+}
+
+.player-list {
+  list-style: none;
+  padding: 0;
+  margin-bottom: 40px;
+  font-size: 0.8em;
+  text-align: center;
+}
+
+.player-list li {
+  margin-bottom: 10px;
+}
+
+.ready {
+  color: #2ecc71;
+  font-weight: bold;
+}
+
+.not-ready {
+  color: #e74c3c;
+  font-weight: bold;
 }
 
 .views-container {
@@ -169,8 +257,8 @@ onUnmounted(() => {
   border: 2px solid #ccc;
   border-radius: 5px;
   background-color: #000;
-  width: 300px; /* Adjust size as needed */
-  height: 200px; /* Adjust size as needed */
+  width: 300px;
+  height: 200px;
 }
 
 .game-over {
@@ -187,5 +275,9 @@ onUnmounted(() => {
 .game-over h1 {
   color: #e74c3c;
   margin-bottom: 20px;
+}
+
+.game-over button {
+  margin-top: 20px;
 }
 </style>
