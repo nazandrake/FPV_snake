@@ -18,7 +18,7 @@ RUN gradle build -x test
 # Stage 3: Create the final, self-contained image
 FROM openjdk:17-slim
 WORKDIR /app
-# Copy only the final JAR file
-COPY --from=backend-builder /app/backend/build/libs/backend-0.0.1.jar /app/app.jar
+# Copy only the final, runnable "fat" JAR file
+COPY --from=backend-builder /app/backend/build/libs/backend-all.jar /app/app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

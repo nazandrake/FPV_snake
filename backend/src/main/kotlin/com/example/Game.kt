@@ -15,10 +15,14 @@ data class GameState(
 
 class Game {
     private val players = ConcurrentHashMap<String, Player>()
-    private var food = generateFood()
+    private lateinit var food: Point
     private val boardSize = 20
     private var gameOver = false
     private var winner: String? = null
+
+    init {
+        food = generateFood()
+    }
 
     fun getGameState(): GameState {
         return GameState(players, food, boardSize, gameOver, winner)
