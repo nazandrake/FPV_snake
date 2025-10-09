@@ -55,6 +55,7 @@ class GameController(private val json: Json) {
                 is ClientMessage.SetPlayerName -> game.setPlayerName(id, clientMessage.name)
                 is ClientMessage.PlayerReady -> game.setPlayerReady(id, clientMessage.isReady)
                 is ClientMessage.ResetGame -> game.resetGame()
+                is ClientMessage.HardResetGame -> game.hardResetGame()
                 is ClientMessage.ChangeDirection -> game.changeDirection(id, clientMessage.direction)
                 is ClientMessage.AddAiPlayer -> game.addAiPlayer()
             }

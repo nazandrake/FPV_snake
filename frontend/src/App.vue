@@ -24,6 +24,7 @@
             {{ isPlayerReady ? 'Waiting for others...' : 'I\'m Ready!' }}
           </button>
           <button @click="addAiPlayer" v-if="canAddAiPlayer" class="add-ai-btn">Add AI Player</button>
+          <button @click="hardResetGame" v-if="isLobbyNotEmpty" class="hard-reset-btn">Reset Lobby</button>
         </div>
       </div>
 
@@ -71,7 +72,12 @@ const canAddAiPlayer = computed(() => {
   if (!gameState.value) return false;
   const players = Object.values(gameState.value.players);
   const humanPlayers = players.filter(p => !p.isAi);
+  // Button should only be visible when there's exactly one human player and no AI.
   return humanPlayers.length === 1 && players.length === 1;
+});
+
+const isLobbyNotEmpty = computed(() => {
+  return gameState.value && Object.keys(gameState.value.players).length > 0;
 });
 
 const winnerName = computed(() => {
@@ -101,6 +107,10 @@ const resetGame = () => {
   sendMessage({ type: 'ResetGame' });
 };
 
+const hardResetGame = () => {
+  sendMessage({ type: 'HardResetGame' });
+};
+
 const addAiPlayer = () => {
   sendMessage({ type: 'AddAiPlayer' });
 };
@@ -122,6 +132,12 @@ const connectWebSocket = () => {
       playerId.value = message.id;
     } else if (message.type.endsWith('.GameStateUpdate')) {
       gameState.value = message.gameState;
+
+      // If the player is no longer in the game state (e.g., after a hard reset),
+      // send them back to the name input screen.
+      if (playerId.value && !gameState.value.players[playerId.value]) {
+        isNameSet.value = false;
+      }
 
       // Sound logic
       if (oldState) {
@@ -266,6 +282,14 @@ onUnmounted(() => {
 
 .add-ai-btn:hover {
   background-color: #2980b9 !important;
+}
+
+.hard-reset-btn {
+  background-color: #e74c3c !important;
+}
+
+.hard-reset-btn:hover {
+  background-color: #c0392b !important;
 }
 
 .views-container {

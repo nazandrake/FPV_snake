@@ -20,6 +20,9 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("AddAiPlayer")
     object AddAiPlayer : ClientMessage()
+    @Serializable
+    @SerialName("HardResetGame")
+    object HardResetGame : ClientMessage()
 }
 
 @Serializable

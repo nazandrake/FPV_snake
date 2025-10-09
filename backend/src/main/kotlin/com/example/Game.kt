@@ -37,6 +37,7 @@ class Game {
     }
 
     fun addPlayer(id: String) {
+        if (players.size >= 2) return // Do not allow more than 2 players
         // Allow multiple players
         val colors = listOf("#ff0000", "#0000ff", "#00ff00", "#ffff00")
         val startPositions = listOf(Point(5, 10), Point(55, 10), Point(5, 50), Point(55, 50))
@@ -50,6 +51,7 @@ class Game {
     }
 
     fun addAiPlayer() {
+        if (players.size >= 2) return // Do not allow more than 2 players
         // Allow multiple players
         val colors = listOf("#ff0000", "#0000ff", "#00ff00", "#ffff00")
         val startPositions = listOf(Point(5, 10), Point(55, 10), Point(5, 50), Point(55, 50))
@@ -80,6 +82,10 @@ class Game {
     }
 
     fun setPlayerName(id: String, name: String) {
+        // If player doesn't exist, add them. This handles re-joining after a hard reset.
+        if (!players.containsKey(id)) {
+            addPlayer(id)
+        }
         players[id]?.name = name
     }
 
@@ -100,12 +106,19 @@ class Game {
         // Reset players
         players.values.forEachIndexed { index, player ->
             player.score = 0
-            player.ready = false
+            player.ready = player.isAi // AI is always ready
             player.direction = Direction.RIGHT
             val startX = if (index == 0) 5 else 15
             player.snake.clear()
             player.snake.add(Point(startX, 10))
         }
+        food = generateFood()
+    }
+
+    fun hardResetGame() {
+        phase = GamePhase.LOBBY
+        winner = null
+        players.clear()
         food = generateFood()
     }
 
