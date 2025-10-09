@@ -57,12 +57,12 @@ fun Application.module() {
                 for (frame in incoming) {
                     frame as? Frame.Text ?: continue
                     val receivedText = frame.readText()
-                    gameController.onMessage(connection.id, receivedText)
+                    launch { gameController.onMessage(connection.id, receivedText) }
                 }
             } catch (e: Exception) {
                 println("Error during WebSocket session: ${e.message}")
             } finally {
-                gameController.onDisconnect(connection)
+                launch { gameController.onDisconnect(connection) }
             }
         }
         // Serve static files from resources

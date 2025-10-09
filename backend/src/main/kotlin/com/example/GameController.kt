@@ -11,56 +11,69 @@ class GameController(private val json: Json) {
     private val game = Game()
     private val connections = ConcurrentHashMap<String, Connection>()
 
+    private suspend fun broadcastGameState() {
+        val gameState = game.getGameState()
+        val gameStateUpdateMessage: ServerMessage = ServerMessage.GameStateUpdate(gameState)
+        val gameStateJson = json.encodeToString(gameStateUpdateMessage)
+
+        connections.values.forEach { connection ->
+            try {
+                connection.session.send(gameStateJson)
+            } catch (e: Exception) {
+                println("Failed to send state to ${connection.id}, removing.")
+                onDisconnect(connection)
+            }
+        }
+    }
+
     suspend fun onConnect(session: DefaultWebSocketSession): Connection {
         val connection = Connection(session)
         connections[connection.id] = connection
         game.addPlayer(connection.id)
         println("Player ${connection.id} connected. Total players: ${connections.size}")
 
-        // Assign player ID
+        // Assign player ID and send initial state
         val assignPlayerIdMessage: ServerMessage = ServerMessage.AssignPlayerId(connection.id)
         connection.session.send(json.encodeToString(assignPlayerIdMessage))
+        broadcastGameState()
 
         return connection
     }
 
-    fun onDisconnect(connection: Connection) {
+    suspend fun onDisconnect(connection: Connection) {
         connections.remove(connection.id)
         game.removePlayer(connection.id)
         println("Player ${connection.id} disconnected. Total players: ${connections.size}")
+        broadcastGameState()
     }
 
-    fun onMessage(id: String, message: String) {
+    suspend fun onMessage(id: String, message: String) {
+        println("Received message from $id: $message") // Log raw message
         try {
-            when (val clientMessage = json.decodeFromString<ClientMessage>(message)) {
+            val clientMessage = json.decodeFromString<ClientMessage>(message)
+            when (clientMessage) {
                 is ClientMessage.SetPlayerName -> game.setPlayerName(id, clientMessage.name)
                 is ClientMessage.PlayerReady -> game.setPlayerReady(id, clientMessage.isReady)
                 is ClientMessage.ResetGame -> game.resetGame()
                 is ClientMessage.ChangeDirection -> game.changeDirection(id, clientMessage.direction)
                 is ClientMessage.AddAiPlayer -> game.addAiPlayer()
             }
+
+            // Don't wait for the next tick for lobby updates
+            if (clientMessage !is ClientMessage.ChangeDirection) {
+                broadcastGameState()
+            }
         } catch (e: Exception) {
-            println("Error decoding message from player $id: $message")
+            println("Error processing message from player $id: $message")
+            e.printStackTrace() // Log the full exception
         }
     }
 
     suspend fun gameLoop() {
         while (true) {
             game.update()
-            val gameState = game.getGameState()
-            val gameStateUpdateMessage: ServerMessage = ServerMessage.GameStateUpdate(gameState)
-            val gameStateJson = json.encodeToString(gameStateUpdateMessage)
-
-            connections.values.forEach { connection ->
-                try {
-                    connection.session.send(gameStateJson)
-                } catch (e: Exception) {
-                    println("Failed to send state to ${connection.id}, removing.")
-                    // This can happen if the client disconnects abruptly
-                    onDisconnect(connection)
-                }
-            }
-            delay(150) // Game speed
+            broadcastGameState()
+            delay(50) // Game speed
         }
     }
 }

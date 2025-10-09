@@ -13,9 +13,11 @@ const props = defineProps({
 
 const container = ref(null);
 let scene, camera, renderer, wall, otherSnake, foodMesh;
+let isInitialized = false;
 
 const initThree = () => {
-  if (!container.value) return;
+  if (!container.value || isInitialized) return;
+  isInitialized = true;
 
   // Scene
   scene = new THREE.Scene();
@@ -47,7 +49,7 @@ const initThree = () => {
 
   // Walls
   const wallGeometry = new THREE.BoxGeometry(props.gameState.boardSize, 2, props.gameState.boardSize);
-  const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, wireframe: true });
+  const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 }); // Dark grey solid color
   wall = new THREE.Mesh(wallGeometry, wallMaterial);
   wall.position.y = 0.5;
   scene.add(wall);
@@ -133,15 +135,15 @@ const onResize = () => {
   }
 };
 
+watch(() => props.gameState, (newGameState) => {
+    if (newGameState && !isInitialized) {
+        initThree();
+    }
+    updateScene();
+}, { deep: true });
+
 onMounted(() => {
-    // wait for gamestate to be ready
-    const interval = setInterval(() => {
-        if (props.gameState) {
-            initThree();
-            window.addEventListener('resize', onResize);
-            clearInterval(interval);
-        }
-    }, 100);
+    window.addEventListener('resize', onResize);
 });
 
 onUnmounted(() => {
@@ -150,8 +152,6 @@ onUnmounted(() => {
     renderer.dispose();
   }
 });
-
-watch(() => props.gameState, updateScene, { deep: true });
 </script>
 
 <style scoped>
