@@ -12,7 +12,7 @@ const props = defineProps({
 });
 
 const container = ref(null);
-let scene, camera, renderer, wall, otherSnake, foodMesh;
+let scene, camera, renderer, wall, otherSnake, foodMesh, obstaclesGroup;
 let isInitialized = false;
 
 const initThree = () => {
@@ -59,6 +59,10 @@ const initThree = () => {
   otherSnake = new THREE.Group();
   scene.add(otherSnake);
 
+  // Obstacles Placeholder
+  obstaclesGroup = new THREE.Group();
+  scene.add(obstaclesGroup);
+
   // Food Placeholder
   const foodGeometry = new THREE.SphereGeometry(0.5, 16, 16);
   const foodMaterial = new THREE.MeshStandardMaterial({ color: 0xf1c40f });
@@ -72,7 +76,7 @@ const initThree = () => {
 const updateScene = () => {
     if (!props.gameState || !props.playerId) return;
 
-    const { players, food, boardSize } = props.gameState;
+    const { players, food, obstacles, boardSize } = props.gameState;
     const player = players[props.playerId];
     if (!player) return;
 
@@ -112,6 +116,18 @@ const updateScene = () => {
             const segmentMesh = new THREE.Mesh(segmentGeometry, snakeMaterial);
             segmentMesh.position.set(segment.x - centerOffset, 0, segment.y - centerOffset);
             otherSnake.add(segmentMesh);
+        });
+    }
+
+    // Update obstacles
+    obstaclesGroup.clear();
+    if (obstacles) {
+        const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
+        obstacles.forEach(obstacle => {
+            const obstacleGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const obstacleMesh = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+            obstacleMesh.position.set(obstacle.x - centerOffset, 0, obstacle.y - centerOffset);
+            obstaclesGroup.add(obstacleMesh);
         });
     }
 

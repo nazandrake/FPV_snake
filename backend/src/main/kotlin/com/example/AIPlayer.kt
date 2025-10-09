@@ -62,6 +62,11 @@ object AIPlayer {
             }
         }
 
+        // Obstacle collision
+        if (gameState.obstacles.any { it == nextHead }) {
+            return false
+        }
+
         return true
     }
 }

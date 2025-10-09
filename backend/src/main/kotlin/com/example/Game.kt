@@ -15,6 +15,7 @@ enum class GamePhase {
 data class GameState(
     val players: Map<String, Player>,
     val food: Point,
+    val obstacles: List<Point>,
     val boardSize: Int,
     val phase: GamePhase,
     val winner: String? = null
@@ -23,6 +24,7 @@ data class GameState(
 class Game {
     private val players = ConcurrentHashMap<String, Player>()
     private lateinit var food: Point
+    private var obstacles = listOf<Point>()
     private val boardSize = 60
     var phase = GamePhase.LOBBY
         private set
@@ -33,7 +35,7 @@ class Game {
     }
 
     fun getGameState(): GameState {
-        return GameState(players, food, boardSize, phase, winner)
+        return GameState(players, food, obstacles, boardSize, phase, winner)
     }
 
     fun addPlayer(id: String) {
@@ -98,11 +100,13 @@ class Game {
 
     private fun startGame() {
         phase = GamePhase.RUNNING
+        generateObstacles()
     }
 
     fun resetGame() {
         phase = GamePhase.LOBBY
         winner = null
+        obstacles = listOf()
         // Reset players
         players.values.forEachIndexed { index, player ->
             player.score = 0
@@ -119,6 +123,7 @@ class Game {
         phase = GamePhase.LOBBY
         winner = null
         players.clear()
+        obstacles = listOf()
         food = generateFood()
     }
 
@@ -193,6 +198,11 @@ class Game {
                     losers.add(player.id)
                 }
             }
+
+            // Obstacle collision
+            if (obstacles.any { it == head }) {
+                losers.add(player.id)
+            }
         }
 
         if (losers.isNotEmpty()) {
@@ -219,9 +229,28 @@ class Game {
     private fun generateFood(): Point {
         while (true) {
             val point = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
-            if (players.values.none { player -> player.snake.any { it == point } }) {
+            if (players.values.none { player -> player.snake.any { it == point } } && obstacles.none { it == point }) {
                 return point
             }
         }
+    }
+
+    private fun generateObstacles() {
+        val newObstacles = mutableListOf<Point>()
+        val allPlayerSnakes = players.values.flatMap { it.snake }
+        for (i in 0..10) {
+            while (true) {
+                val point = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
+                if (
+                    players.values.none { player -> player.snake.any { it == point } } &&
+                    point != food &&
+                    !newObstacles.contains(point)
+                ) {
+                    newObstacles.add(point)
+                    break
+                }
+            }
+        }
+        obstacles = newObstacles
     }
 }

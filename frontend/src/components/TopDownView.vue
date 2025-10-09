@@ -25,7 +25,7 @@ const serverUpdateInterval = 50; // Corresponds to the backend delay
 const draw = (interpolationFactor) => {
   if (!ctx || !currentGameState.value) return;
 
-  const { players, food, boardSize } = currentGameState.value;
+  const { players, food, obstacles, boardSize } = currentGameState.value;
   const scale = canvasSize / boardSize;
 
   ctx.fillStyle = '#1a1a1a';
@@ -33,6 +33,13 @@ const draw = (interpolationFactor) => {
 
   ctx.fillStyle = '#f1c40f';
   ctx.fillRect(food.x * scale, food.y * scale, scale, scale);
+
+  if (obstacles) {
+    ctx.fillStyle = '#654321'; // A dark, solid brown for obstacles
+    obstacles.forEach(obstacle => {
+      ctx.fillRect(obstacle.x * scale, obstacle.y * scale, scale, scale);
+    });
+  }
 
   for (const playerId in players) {
     const player = players[playerId];
