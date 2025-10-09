@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build the backend with bundled frontend
-FROM gradle:8.8-jdk17-alpine AS backend-builder
+FROM gradle:8.8-jdk17 AS backend-builder
 WORKDIR /app/backend
 # Copy the built frontend assets into the backend's resources
 COPY --from=frontend-builder /app/frontend/dist /app/backend/src/main/resources/static
