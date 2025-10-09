@@ -19,9 +19,12 @@
             {{ player.name }} - <span :class="{ 'ready': player.ready, 'not-ready': !player.ready }">{{ player.ready ? 'Ready' : 'Not Ready' }}</span>
           </li>
         </ul>
-        <button @click="setReady" :disabled="isPlayerReady">
-          {{ isPlayerReady ? 'Waiting for others...' : 'I\'m Ready!' }}
-        </button>
+        <div class="lobby-buttons">
+          <button @click="setReady" :disabled="isPlayerReady">
+            {{ isPlayerReady ? 'Waiting for others...' : 'I\'m Ready!' }}
+          </button>
+          <button @click="addAiPlayer" v-if="canAddAiPlayer" class="add-ai-btn">Add AI Player</button>
+        </div>
       </div>
 
       <!-- Game View -->
@@ -66,6 +69,13 @@ const isPlayerReady = computed(() => {
   return gameState.value?.players[playerId.value]?.ready || false;
 });
 
+const canAddAiPlayer = computed(() => {
+  if (!gameState.value) return false;
+  const players = Object.values(gameState.value.players);
+  const humanPlayers = players.filter(p => !p.isAi);
+  return humanPlayers.length === 1 && players.length === 1;
+});
+
 const winnerName = computed(() => {
     if (!gameState.value || !gameState.value.winner) return null;
     const winnerId = gameState.value.winner;
@@ -91,6 +101,10 @@ const setReady = () => {
 
 const resetGame = () => {
   sendMessage({ type: 'com.example.ClientMessage.ResetGame' });
+};
+
+const addAiPlayer = () => {
+  sendMessage({ type: 'com.example.ClientMessage.AddAiPlayer' });
 };
 
 const connectWebSocket = () => {
@@ -241,6 +255,19 @@ onUnmounted(() => {
 .not-ready {
   color: #e74c3c;
   font-weight: bold;
+}
+
+.lobby-buttons {
+  display: flex;
+  gap: 20px;
+}
+
+.add-ai-btn {
+  background-color: #3498db !important;
+}
+
+.add-ai-btn:hover {
+  background-color: #2980b9 !important;
 }
 
 .views-container {

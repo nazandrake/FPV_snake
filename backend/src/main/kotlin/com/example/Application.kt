@@ -33,6 +33,7 @@ fun Application.module() {
                 subclass(ClientMessage.PlayerReady::class)
                 subclass(ClientMessage.ResetGame::class)
                 subclass(ClientMessage.ChangeDirection::class)
+                subclass(ClientMessage.AddAiPlayer::class)
             }
         }
         encodeDefaults = true

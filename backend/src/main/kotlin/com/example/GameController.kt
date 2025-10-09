@@ -37,6 +37,7 @@ class GameController(private val json: Json) {
                 is ClientMessage.PlayerReady -> game.setPlayerReady(id, clientMessage.isReady)
                 is ClientMessage.ResetGame -> game.resetGame()
                 is ClientMessage.ChangeDirection -> game.changeDirection(id, clientMessage.direction)
+                is ClientMessage.AddAiPlayer -> game.addAiPlayer()
             }
         } catch (e: Exception) {
             println("Error decoding message from player $id: $message")

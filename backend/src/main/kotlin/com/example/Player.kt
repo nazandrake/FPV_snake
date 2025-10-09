@@ -10,7 +10,8 @@ data class Player(
     var direction: Direction,
     val color: String,
     var score: Int = 0,
-    var ready: Boolean = false
+    var ready: Boolean = false,
+    val isAi: Boolean = false
 )
 
 @Serializable

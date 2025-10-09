@@ -45,6 +45,24 @@ class Game {
         }
     }
 
+    fun addAiPlayer() {
+        if (players.size < 2) {
+            val aiId = "ai-player-${(1000..9999).random()}"
+            val color = "#00ff00"
+            val startX = if (players.isEmpty()) 5 else 15
+            val snake = mutableListOf(Point(startX, 10))
+            players[aiId] = Player(
+                id = aiId,
+                snake = snake,
+                direction = Direction.RIGHT,
+                color = color,
+                name = "Computer",
+                isAi = true,
+                ready = true
+            )
+        }
+    }
+
     fun removePlayer(id: String) {
         players.remove(id)
         if (phase == GamePhase.RUNNING && players.size < 2) {
@@ -98,6 +116,16 @@ class Game {
 
     fun update() {
         if (phase != GamePhase.RUNNING) return
+
+        // AI Player Logic
+        val aiPlayers = players.values.filter { it.isAi }
+        if (aiPlayers.isNotEmpty()) {
+            val currentGameState = getGameState()
+            aiPlayers.forEach { aiPlayer ->
+                val nextDirection = AIPlayer.getNextDirection(currentGameState, aiPlayer.id)
+                changeDirection(aiPlayer.id, nextDirection)
+            }
+        }
 
         moveSnakes()
         checkCollisions()
