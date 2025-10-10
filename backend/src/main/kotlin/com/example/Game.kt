@@ -38,30 +38,35 @@ class Game {
         return GameState(players, food, obstacles, boardSize, phase, winner)
     }
 
-    fun addPlayer(id: String) {
-        if (players.size >= 2) return // Do not allow more than 2 players
-        // Allow multiple players
-        val colors = listOf("#ff0000", "#0000ff", "#00ff00", "#ffff00")
-        val startPositions = listOf(Point(5, 10), Point(55, 10), Point(5, 50), Point(55, 50))
-        val playerIndex = players.size
+    private fun generateRandomColor(): String {
+        val r = Random.nextInt(256)
+        val g = Random.nextInt(256)
+        val b = Random.nextInt(256)
+        return "#%02x%02x%02x".format(r, g, b)
+    }
 
-        val color = colors.getOrElse(playerIndex) { "#ffffff" } // Default to white
-        val startPoint = startPositions.getOrElse(playerIndex) { Point(10, 10) }
+    private fun generateRandomStartPosition(): Point {
+        while (true) {
+            val point = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
+            if (players.values.none { player -> player.snake.any { it == point } } && obstacles.none { it == point }) {
+                return point
+            }
+        }
+    }
+
+    fun addPlayer(id: String) {
+        val playerIndex = players.size
+        val color = generateRandomColor()
+        val startPoint = generateRandomStartPosition()
 
         val snake = mutableListOf(startPoint)
         players[id] = Player(id = id, snake = snake, direction = Direction.RIGHT, color = color, name = "Player ${playerIndex + 1}")
     }
 
     fun addAiPlayer() {
-        if (players.size >= 2) return // Do not allow more than 2 players
-        // Allow multiple players
-        val colors = listOf("#ff0000", "#0000ff", "#00ff00", "#ffff00")
-        val startPositions = listOf(Point(5, 10), Point(55, 10), Point(5, 50), Point(55, 50))
-        val playerIndex = players.size
-
         val aiId = "ai-player-${(1000..9999).random()}"
-        val color = colors.getOrElse(playerIndex) { "#ffffff" }
-        val startPoint = startPositions.getOrElse(playerIndex) { Point(15, 15) }
+        val color = generateRandomColor()
+        val startPoint = generateRandomStartPosition()
 
         val snake = mutableListOf(startPoint)
         players[aiId] = Player(
@@ -93,7 +98,7 @@ class Game {
 
     fun setPlayerReady(id: String, isReady: Boolean) {
         players[id]?.ready = isReady
-        if (phase == GamePhase.LOBBY && players.size > 1 && players.values.all { it.ready }) {
+        if (phase == GamePhase.LOBBY && players.isNotEmpty() && players.values.all { it.ready }) {
             startGame()
         }
     }
@@ -108,15 +113,24 @@ class Game {
         winner = null
         obstacles = listOf()
         // Reset players
-        players.values.forEachIndexed { index, player ->
+        players.values.forEach { player ->
             player.score = 0
             player.ready = player.isAi // AI is always ready
             player.direction = Direction.RIGHT
-            val startX = if (index == 0) 5 else 15
             player.snake.clear()
-            player.snake.add(Point(startX, 10))
         }
+
         food = generateFood()
+
+        val usedPositions = mutableSetOf<Point>(food)
+        players.values.forEach { player ->
+            var startPoint: Point
+            do {
+                startPoint = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
+            } while (usedPositions.contains(startPoint))
+            usedPositions.add(startPoint)
+            player.snake.add(startPoint)
+        }
     }
 
     fun hardResetGame() {

@@ -16,7 +16,7 @@
         <h1>Lobby</h1>
         <ul class="player-list">
           <li v-for="player in gameState.players" :key="player.id">
-            {{ player.name }} - <span :class="{ 'ready': player.ready, 'not-ready': !player.ready }">{{ player.ready ? 'Ready' : 'Not Ready' }}</span>
+            <span :style="{ color: player.color, fontWeight: 'bold' }">{{ player.name }}</span> - <span :class="{ 'ready': player.ready, 'not-ready': !player.ready }">{{ player.ready ? 'Ready' : 'Not Ready' }}</span>
           </li>
         </ul>
         <div class="lobby-buttons">
@@ -33,7 +33,7 @@
         <div class="scores-container">
             <h2>Scores</h2>
             <ul>
-                <li v-for="player in sortedPlayersByScore" :key="player.id">
+                <li v-for="player in sortedPlayersByScore" :key="player.id" :style="{ color: player.color, fontWeight: 'bold' }">
                     {{ player.name }}: {{ player.score }}
                 </li>
             </ul>
@@ -49,12 +49,12 @@
       <!-- Game Over Screen -->
       <div v-if="gameState.phase === 'GAME_OVER'" class="game-over">
         <h1>Game Over</h1>
-        <h2 v-if="winnerName">Winner: {{ winnerName }}</h2>
+        <h2 v-if="winner">Winner: <span :style="{ color: winner.color, fontWeight: 'bold' }">{{ winner.name }}</span></h2>
         <h2 v-else>It's a tie!</h2>
         <div class="final-scores">
             <h3>Final Scores</h3>
             <ul>
-                <li v-for="player in sortedPlayersByScore" :key="player.id">
+                <li v-for="player in sortedPlayersByScore" :key="player.id" :style="{ color: player.color, fontWeight: 'bold' }">
                     {{ player.name }}: {{ player.score }}
                 </li>
             </ul>
@@ -87,21 +87,18 @@ const isPlayerReady = computed(() => {
 });
 
 const canAddAiPlayer = computed(() => {
-  if (!gameState.value) return false;
-  const players = Object.values(gameState.value.players);
-  const humanPlayers = players.filter(p => !p.isAi);
-  // Button should only be visible when there's exactly one human player and no AI.
-  return humanPlayers.length === 1 && players.length === 1;
+  // Allow adding AI players anytime in the lobby
+  return !!gameState.value;
 });
 
 const isLobbyNotEmpty = computed(() => {
   return gameState.value && Object.keys(gameState.value.players).length > 0;
 });
 
-const winnerName = computed(() => {
+const winner = computed(() => {
     if (!gameState.value || !gameState.value.winner) return null;
     const winnerId = gameState.value.winner;
-    return gameState.value.players[winnerId]?.name || 'Unknown';
+    return gameState.value.players[winnerId];
 });
 
 const sortedPlayersByScore = computed(() => {
