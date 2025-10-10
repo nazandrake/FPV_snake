@@ -1,96 +1,91 @@
 <template>
-  <div class="top-down-container">
+  <div class="minimap-container">
     <canvas ref="canvas" :width="canvasSize" :height="canvasSize"></canvas>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, watch, onUnmounted } from 'vue';
-import foodApple from '../assets/food-apple.png';
 
 const props = defineProps({
   gameState: Object,
+  playerId: String,
 });
 
 const canvas = ref(null);
-const canvasSize = 600;
+const canvasSize = 200;
 let ctx = null;
 let animationFrameId = null;
-let foodImage = null;
 
 // For interpolation
-const previousGameState = ref(null);
-const currentGameState = ref(null);
+let lastGameState = null;
 let lastUpdateTime = 0;
 const serverUpdateInterval = 50; // Corresponds to the backend delay
 
 const draw = (interpolationFactor) => {
-  if (!ctx || !currentGameState.value) return;
+  if (!ctx || !props.gameState) return;
 
-  const { players, food, obstacles, boardSize } = currentGameState.value;
+  const { players, food, obstacles, buffs, boardSize } = props.gameState;
   const scale = canvasSize / boardSize;
 
-  // Draw grass background
-  ctx.fillStyle = '#27ae60'; // Grassy green
+  // Draw background
+  ctx.fillStyle = 'rgba(39, 174, 96, 0.7)'; // Semi-transparent grassy green
   ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-  // Draw food (apple)
-  if (foodImage && foodImage.complete) {
-    ctx.drawImage(foodImage, food.x * scale, food.y * scale, scale, scale);
-  } else {
-    // Fallback to drawing a red circle if the image hasn't loaded
-    ctx.fillStyle = '#e74c3c'; // Vibrant red
-    ctx.beginPath();
-    ctx.arc(food.x * scale + scale / 2, food.y * scale + scale / 2, scale / 2, 0, 2 * Math.PI);
-    ctx.fill();
+  // Draw food
+  ctx.fillStyle = '#e74c3c'; // Vibrant red
+  ctx.beginPath();
+  ctx.arc(food.x * scale + scale / 2, food.y * scale + scale / 2, scale, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Draw obstacles
+  if (obstacles) {
+    ctx.fillStyle = '#8B4513'; // SaddleBrown
+    obstacles.forEach(obstacle => {
+      ctx.fillRect(obstacle.x * scale, obstacle.y * scale, scale, scale);
+    });
   }
 
-  // Draw obstacles (trees)
-  if (obstacles) {
-    obstacles.forEach(obstacle => {
-      const x = obstacle.x * scale;
-      const y = obstacle.y * scale;
-
-      // Draw trunk
-      ctx.fillStyle = '#8B4513'; // SaddleBrown
-      ctx.fillRect(x + scale * 0.4, y + scale * 0.4, scale * 0.2, scale * 0.6);
-
-      // Draw canopy
-      ctx.fillStyle = '#228B22'; // ForestGreen
+  // Draw buffs
+  if (buffs) {
+    buffs.forEach(buff => {
+      ctx.fillStyle = buff.type === 'SPEED' ? '#f1c40f' : '#2ecc71'; // Yellow for speed, Green for timer
       ctx.beginPath();
-      ctx.arc(x + scale / 2, y + scale / 2, scale / 2, 0, 2 * Math.PI);
+      ctx.arc(buff.position.x * scale + scale / 2, buff.position.y * scale / 2, scale * 0.8, 0, 2 * Math.PI);
       ctx.fill();
     });
   }
 
-  for (const playerId in players) {
-    const player = players[playerId];
-    const prevPlayer = previousGameState.value?.players[playerId];
+  // Draw players
+  for (const id in players) {
+    const player = players[id];
+    let x = player.position.x;
+    let y = player.position.y;
+
+    const lastPlayer = lastGameState?.players[id];
+    if (lastPlayer && interpolationFactor < 1) {
+        const dx = player.position.x - lastPlayer.position.x;
+        const dy = player.position.y - lastPlayer.position.y;
+        if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) { // Only interpolate for small movements
+            x = lastPlayer.position.x + dx * interpolationFactor;
+            y = lastPlayer.position.y + dy * interpolationFactor;
+        }
+    }
 
     ctx.fillStyle = player.color;
-    player.snake.forEach((segment, index) => {
-      let x = segment.x;
-      let y = segment.y;
+    // Highlight current player
+    if (id === props.playerId) {
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+    } else {
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 1;
+    }
 
-      const prevSegment = prevPlayer?.snake[index];
-      if (prevSegment && interpolationFactor < 1) {
-        const dx = segment.x - prevSegment.x;
-        const dy = segment.y - prevSegment.y;
-
-        // Don't interpolate on large jumps (e.g., wrapping around the board)
-        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-            x = segment.x;
-            y = segment.y;
-        } else {
-            x = prevSegment.x + dx * interpolationFactor;
-            y = prevSegment.y + dy * interpolationFactor;
-        }
-      }
-
-      ctx.globalAlpha = index === 0 ? 1.0 : 0.8;
-      ctx.fillRect(x * scale, y * scale, scale, scale);
-    });
-    ctx.globalAlpha = 1.0;
+    ctx.beginPath();
+    ctx.arc(x * scale + scale / 2, y * scale + scale / 2, scale * 1.2, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
   }
 };
 
@@ -106,19 +101,7 @@ const animationLoop = () => {
 
 onMounted(() => {
   ctx = canvas.value.getContext('2d');
-  foodImage = new Image();
-  foodImage.src = foodApple;
-
-  foodImage.onload = () => {
-    if (!animationFrameId) {
-      animationFrameId = requestAnimationFrame(animationLoop);
-    }
-  };
-
-  // If the image is already cached and loaded, start the loop immediately.
-  if (foodImage.complete && !animationFrameId) {
-    animationFrameId = requestAnimationFrame(animationLoop);
-  }
+  animationFrameId = requestAnimationFrame(animationLoop);
 });
 
 onUnmounted(() => {
@@ -126,25 +109,27 @@ onUnmounted(() => {
 });
 
 watch(() => props.gameState, (newGameState) => {
-    previousGameState.value = currentGameState.value;
-    currentGameState.value = newGameState;
-    if (!previousGameState.value) {
-        previousGameState.value = newGameState; // Initial setup
-    }
+    lastGameState = props.gameState;
     lastUpdateTime = Date.now();
-}, { deep: true });
+}, { deep: true, immediate: true });
+
 </script>
 
 <style scoped>
-.top-down-container {
-  border: 4px solid #34495e;
+.minimap-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  border: 2px solid #34495e;
   border-radius: 8px;
-  background-color: #2c3e50;
-  padding: 10px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  background-color: rgba(44, 62, 80, 0.5);
+  padding: 5px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+  z-index: 10;
 }
 
 canvas {
   display: block;
+  border-radius: 4px;
 }
 </style>

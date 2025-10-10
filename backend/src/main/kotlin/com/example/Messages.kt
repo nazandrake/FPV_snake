@@ -15,8 +15,12 @@ sealed class ClientMessage {
     @SerialName("ResetGame")
     object ResetGame : ClientMessage()
     @Serializable
-    @SerialName("ChangeDirection")
-    data class ChangeDirection(val direction: Direction) : ClientMessage()
+    @SerialName("StartMoving")
+    data class StartMoving(val direction: Direction) : ClientMessage()
+
+    @Serializable
+    @SerialName("StopMoving")
+    object StopMoving : ClientMessage()
     @Serializable
     @SerialName("AddAiPlayer")
     object AddAiPlayer : ClientMessage()

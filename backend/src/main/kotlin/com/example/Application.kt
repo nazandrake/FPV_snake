@@ -32,8 +32,10 @@ fun Application.module() {
                 subclass(ClientMessage.SetPlayerName::class)
                 subclass(ClientMessage.PlayerReady::class)
                 subclass(ClientMessage.ResetGame::class)
-                subclass(ClientMessage.ChangeDirection::class)
+                subclass(ClientMessage.StartMoving::class)
+                subclass(ClientMessage.StopMoving::class)
                 subclass(ClientMessage.AddAiPlayer::class)
+                subclass(ClientMessage.HardResetGame::class)
             }
         }
         encodeDefaults = true

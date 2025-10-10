@@ -1,72 +1,110 @@
 package com.example
 
+import kotlin.math.abs
+import kotlin.math.pow
+import kotlin.math.sqrt
+
 object AIPlayer {
-    fun getNextDirection(gameState: GameState, aiPlayerId: String): Direction {
-        val aiPlayer = gameState.players[aiPlayerId] ?: return Direction.RIGHT
-        val food = gameState.food
-        val head = aiPlayer.snake.first()
 
-        // 1. Determine all possible non-reversing moves.
-        val possibleMoves = Direction.entries.toMutableSet()
-        when (aiPlayer.direction) {
-            Direction.UP -> possibleMoves.remove(Direction.DOWN)
-            Direction.DOWN -> possibleMoves.remove(Direction.UP)
-            Direction.LEFT -> possibleMoves.remove(Direction.RIGHT)
-            Direction.RIGHT -> possibleMoves.remove(Direction.LEFT)
+    private const val LOW_TIMER_THRESHOLD = 45 // When to start panicking
+
+    fun getMove(gameState: GameState, aiPlayerId: String): Direction? {
+        val aiPlayer = gameState.players[aiPlayerId] ?: return null
+
+        // 1. Decide on a target
+        val target = selectTarget(gameState, aiPlayer) ?: return null // No target, do nothing
+
+        // 2. Find the best direction towards the target
+        return findBestDirection(gameState, aiPlayer, target)
+    }
+
+    private fun selectTarget(gameState: GameState, aiPlayer: Player): Point? {
+        val foodPosition = gameState.food
+        val timerBuffs = gameState.buffs.filter { it.type == BuffType.TIMER }
+        val speedBuffs = gameState.buffs.filter { it.type == BuffType.SPEED }
+
+        // Priority 1: Survival
+        if (aiPlayer.survivalTimer < LOW_TIMER_THRESHOLD) {
+            val survivalTargets = mutableListOf(foodPosition)
+            timerBuffs.forEach { survivalTargets.add(it.position) }
+            return findClosestTarget(aiPlayer.position, survivalTargets)
         }
 
-        // 2. Find all safe moves from the possible moves.
-        val safeMoves = possibleMoves.filter { isSafe(it, head, gameState, aiPlayer) }
-
-        // If no moves are safe, well, we're doomed. Continue in the current direction.
-        if (safeMoves.isEmpty()) {
-            return aiPlayer.direction
+        // Priority 2: Get buffs if available
+        val allBuffs = (timerBuffs + speedBuffs).map { it.position }
+        if (allBuffs.isNotEmpty()) {
+            return findClosestTarget(aiPlayer.position, allBuffs)
         }
 
-        // 3. From the safe moves, which ones move us closer to the food?
-        val preferredMoves = safeMoves.filter {
-            when (it) {
-                Direction.UP -> head.y > food.y
-                Direction.DOWN -> head.y < food.y
-                Direction.LEFT -> head.x > food.x
-                Direction.RIGHT -> head.x < food.x
+        // Priority 3: Go for food
+        return foodPosition
+    }
+
+    private fun findBestDirection(gameState: GameState, player: Player, target: Point): Direction? {
+        val currentPos = player.position
+        val dx = target.x - currentPos.x
+        val dy = target.y - currentPos.y
+
+        val preferredDirections = mutableListOf<Direction>()
+        if (abs(dx) > abs(dy)) {
+            if (dx > 0) preferredDirections.add(Direction.RIGHT) else preferredDirections.add(Direction.LEFT)
+            if (dy > 0) preferredDirections.add(Direction.DOWN) else if (dy < 0) preferredDirections.add(Direction.UP)
+        } else {
+            if (dy > 0) preferredDirections.add(Direction.DOWN) else preferredDirections.add(Direction.UP)
+            if (dx > 0) preferredDirections.add(Direction.RIGHT) else if (dx < 0) preferredDirections.add(Direction.LEFT)
+        }
+
+        // Add remaining directions as fallbacks
+        Direction.entries.forEach {
+            if (!preferredDirections.contains(it)) {
+                preferredDirections.add(it)
             }
         }
 
-        // 4. If there are preferred safe moves, choose one randomly. Otherwise, choose any safe move randomly.
-        return (preferredMoves.ifEmpty { safeMoves }).random()
-    }
-
-    private fun isSafe(direction: Direction, head: Point, gameState: GameState, player: Player): Boolean {
-        val nextHead = when (direction) {
-            Direction.UP -> Point(head.x, head.y - 1)
-            Direction.DOWN -> Point(head.x, head.y + 1)
-            Direction.LEFT -> Point(head.x - 1, head.y)
-            Direction.RIGHT -> Point(head.x + 1, head.y)
+        // Find the first safe direction from the preferred list
+        for (direction in preferredDirections) {
+            val nextPos = getNextPosition(currentPos, direction)
+            if (isSafe(nextPos, gameState, player.id)) {
+                return direction
+            }
         }
 
+        return null // No safe move found
+    }
+
+    private fun getNextPosition(current: Point, direction: Direction): Point {
+        return when (direction) {
+            Direction.UP -> Point(current.x, current.y - 1)
+            Direction.DOWN -> Point(current.x, current.y + 1)
+            Direction.LEFT -> Point(current.x - 1, current.y)
+            Direction.RIGHT -> Point(current.x + 1, current.y)
+        }
+    }
+
+    private fun isSafe(position: Point, gameState: GameState, playerId: String): Boolean {
         // Wall collision
-        if (nextHead.x < 0 || nextHead.x >= gameState.boardSize || nextHead.y < 0 || nextHead.y >= gameState.boardSize) {
+        if (position.x < 0 || position.x >= gameState.boardSize || position.y < 0 || position.y >= gameState.boardSize) {
             return false
         }
 
-        // Self collision
-        if (player.snake.any { it == nextHead }) {
+        // Obstacle collision
+        if (gameState.obstacles.any { it == position }) {
             return false
         }
 
         // Other player collision
-        gameState.players.values.filter { it.id != player.id }.forEach { otherPlayer ->
-            if (otherPlayer.snake.any { it == nextHead }) {
-                return false
-            }
-        }
-
-        // Obstacle collision
-        if (gameState.obstacles.any { it == nextHead }) {
+        if (gameState.players.values.any { it.id != playerId && it.position == position }) {
             return false
         }
 
         return true
+    }
+
+    private fun findClosestTarget(currentPos: Point, targets: List<Point>): Point? {
+        return targets.minByOrNull { distance(currentPos, it) }
+    }
+
+    private fun distance(p1: Point, p2: Point): Double {
+        return sqrt((p1.x - p2.x).toDouble().pow(2) + (p1.y - p2.y).toDouble().pow(2))
     }
 }
