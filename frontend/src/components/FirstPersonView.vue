@@ -192,8 +192,8 @@ const updateScene = () => {
 
 const animate = () => {
     requestAnimationFrame(animate);
-    if (skybox) {
-        skybox.rotation.y += 0.0001;
+    if (scene) {
+        scene.rotation.y += 0.0001;
     }
     updateScene();
     if (renderer && scene && camera) {

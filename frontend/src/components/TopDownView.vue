@@ -51,7 +51,7 @@ const draw = (interpolationFactor) => {
     buffs.forEach(buff => {
       ctx.fillStyle = buff.type === 'SPEED' ? '#f1c40f' : '#2ecc71'; // Yellow for speed, Green for timer
       ctx.beginPath();
-      ctx.arc(buff.position.x * scale + scale / 2, buff.position.y * scale / 2, scale * 0.8, 0, 2 * Math.PI);
+      ctx.arc(buff.position.x * scale + scale / 2, buff.position.y * scale + scale / 2, scale * 0.8, 0, 2 * Math.PI);
       ctx.fill();
     });
   }
