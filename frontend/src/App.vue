@@ -10,7 +10,7 @@
     </div>
 
     <!-- Game Content -->
-    <div v-if="connected && isNameSet && gameState">
+    <div v-if="connected && isNameSet && gameState" class="game-content-wrapper">
       <!-- Lobby View -->
       <div v-if="gameState.phase === 'LOBBY'" class="lobby-container">
         <h1>Lobby</h1>
@@ -76,7 +76,10 @@ const playerName = ref('');
 const isNameSet = ref(false);
 let socket = null;
 
-// Audio setup (temporarily disabled for debugging)
+// Audio setup
+const eatSound = new Audio('/eat.mp3');
+const winSound = new Audio('/win.mp3');
+const loseSound = new Audio('/lose.mp3');
 
 const isPlayerReady = computed(() => {
   return gameState.value?.players[playerId.value]?.ready || false;
@@ -146,16 +149,14 @@ const handleStopMoving = () => {
 
 const connectWebSocket = () => {
   const wsUrl = 'ws://localhost:8080/ws';
-  console.log(`Attempting to connect to WebSocket at: ${wsUrl}`);
   socket = new WebSocket(wsUrl);
 
   socket.onopen = () => {
-    console.log("WebSocket connection established successfully.");
+    console.log("WebSocket connected!");
     connected.value = true;
   };
 
   socket.onmessage = (event) => {
-    console.log("Received message from server:", event.data);
     const message = JSON.parse(event.data);
     const oldState = gameState.value;
 
@@ -167,11 +168,36 @@ const connectWebSocket = () => {
       if (playerId.value && !gameState.value.players[playerId.value]) {
         isNameSet.value = false;
       }
+
+      if (oldState) {
+        const myPlayer = playerId.value ? gameState.value.players[playerId.value] : null;
+        const oldPlayer = playerId.value ? oldState.players[playerId.value] : null;
+
+        if (myPlayer && oldPlayer && myPlayer.score > oldPlayer.score) {
+          try {
+            eatSound.play();
+          } catch (e) {
+            console.error("Failed to play eat sound:", e);
+          }
+        }
+
+        if (gameState.value.phase === 'GAME_OVER' && oldState.phase === 'RUNNING') {
+          try {
+            if (gameState.value.winner === playerId.value) {
+              winSound.play();
+            } else {
+              loseSound.play();
+            }
+          } catch (e) {
+            console.error("Failed to play game over sound:", e);
+          }
+        }
+      }
     }
   };
 
-  socket.onclose = (event) => {
-    console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
+  socket.onclose = () => {
+    console.log("WebSocket disconnected.");
     connected.value = false;
     isNameSet.value = false;
     gameState.value = null;
@@ -196,15 +222,20 @@ onUnmounted(() => {
 
 <style scoped>
 .game-container {
-  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  font-family: 'Arial', sans-serif;
-  color: #fff;
-  background-color: #1a1a1a;
   height: 100vh;
   width: 100vw;
+  background-color: #1a1a1a;
+  color: #fff;
+  font-family: 'Arial', sans-serif;
+}
+
+.game-content-wrapper {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
 }
 
 .loading, .name-input-container, .lobby-container {
@@ -246,8 +277,8 @@ onUnmounted(() => {
 
 .game-view {
     position: relative;
+    flex-grow: 1;
     width: 100%;
-    height: 100%;
     overflow: hidden;
 }
 
