@@ -76,10 +76,7 @@ const playerName = ref('');
 const isNameSet = ref(false);
 let socket = null;
 
-// Audio setup
-const eatSound = new Audio('/eat.mp3');
-const winSound = new Audio('/win.mp3');
-const loseSound = new Audio('/lose.mp3');
+// Audio setup (temporarily disabled for debugging)
 
 const isPlayerReady = computed(() => {
   return gameState.value?.players[playerId.value]?.ready || false;
@@ -148,15 +145,17 @@ const handleStopMoving = () => {
 };
 
 const connectWebSocket = () => {
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+  const wsUrl = 'ws://localhost:8080/ws';
+  console.log(`Attempting to connect to WebSocket at: ${wsUrl}`);
+  socket = new WebSocket(wsUrl);
 
   socket.onopen = () => {
-    console.log("WebSocket connected!");
+    console.log("WebSocket connection established successfully.");
     connected.value = true;
   };
 
   socket.onmessage = (event) => {
+    console.log("Received message from server:", event.data);
     const message = JSON.parse(event.data);
     const oldState = gameState.value;
 
@@ -168,28 +167,11 @@ const connectWebSocket = () => {
       if (playerId.value && !gameState.value.players[playerId.value]) {
         isNameSet.value = false;
       }
-
-      if (oldState) {
-        const myPlayer = playerId.value ? gameState.value.players[playerId.value] : null;
-        const oldPlayer = playerId.value ? oldState.players[playerId.value] : null;
-
-        if (myPlayer && oldPlayer && myPlayer.score > oldPlayer.score) {
-          eatSound.play();
-        }
-
-        if (gameState.value.phase === 'GAME_OVER' && oldState.phase === 'RUNNING') {
-          if (gameState.value.winner === playerId.value) {
-            winSound.play();
-          } else {
-            loseSound.play();
-          }
-        }
-      }
     }
   };
 
-  socket.onclose = () => {
-    console.log("WebSocket disconnected.");
+  socket.onclose = (event) => {
+    console.log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`);
     connected.value = false;
     isNameSet.value = false;
     gameState.value = null;

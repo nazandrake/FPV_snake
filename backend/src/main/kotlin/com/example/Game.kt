@@ -43,6 +43,7 @@ class Game {
     var phase = GamePhase.LOBBY
         private set
     private var winner: String? = null
+    private var tickCounter = 0
 
     init {
         food = generateFood()
@@ -123,6 +124,7 @@ class Game {
 
     private fun startGame() {
         phase = GamePhase.RUNNING
+        tickCounter = 0
         generateObstacles()
         generateBuffs()
     }
@@ -229,15 +231,20 @@ class Game {
             }
         }
 
-        // Update survival timers and check for eliminations
+        // Update survival timers every second (20 ticks)
+        tickCounter++
+        if (tickCounter >= 20) {
+            players.values.forEach { it.survivalTimer-- }
+            tickCounter = 0
+        }
+
+        // Check for eliminations
         val eliminatedPlayers = mutableListOf<String>()
         players.values.forEach { player ->
-            player.survivalTimer--
             if (player.survivalTimer <= 0) {
                 eliminatedPlayers.add(player.id)
             }
         }
-
         eliminatedPlayers.forEach { removePlayer(it) }
 
 
