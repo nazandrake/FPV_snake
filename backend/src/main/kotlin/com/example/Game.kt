@@ -219,14 +219,18 @@ class Game {
             }
         }
 
+        // Remove the losers from the game state
         if (losers.isNotEmpty()) {
-            phase = GamePhase.GAME_OVER
-            if (losers.size == players.size) {
-                // It's a tie
-                winner = null
-            } else {
-                winner = players.keys.find { !losers.contains(it) }
+            losers.forEach { loserId ->
+                players.remove(loserId)
             }
+        }
+
+        // Now, check if the game is over. The game ends if 1 or 0 players are left.
+        if (players.size <= 1 && phase == GamePhase.RUNNING) {
+            phase = GamePhase.GAME_OVER
+            // If one player is left, they are the winner. If zero are left, it's a tie (winner is null).
+            winner = players.keys.firstOrNull()
         }
     }
 
