@@ -6,6 +6,7 @@
 
 <script setup>
 import { ref, onMounted, watch, onUnmounted } from 'vue';
+import foodApple from '../assets/food-apple.png';
 
 const props = defineProps({
   gameState: Object,
@@ -15,6 +16,7 @@ const canvas = ref(null);
 const canvasSize = 600;
 let ctx = null;
 let animationFrameId = null;
+let foodImage = null;
 
 // For interpolation
 const previousGameState = ref(null);
@@ -28,16 +30,36 @@ const draw = (interpolationFactor) => {
   const { players, food, obstacles, boardSize } = currentGameState.value;
   const scale = canvasSize / boardSize;
 
-  ctx.fillStyle = '#1a1a1a';
+  // Draw grass background
+  ctx.fillStyle = '#27ae60'; // Grassy green
   ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-  ctx.fillStyle = '#f1c40f';
-  ctx.fillRect(food.x * scale, food.y * scale, scale, scale);
+  // Draw food (apple)
+  if (foodImage && foodImage.complete) {
+    ctx.drawImage(foodImage, food.x * scale, food.y * scale, scale, scale);
+  } else {
+    // Fallback to drawing a red circle if the image hasn't loaded
+    ctx.fillStyle = '#e74c3c'; // Vibrant red
+    ctx.beginPath();
+    ctx.arc(food.x * scale + scale / 2, food.y * scale + scale / 2, scale / 2, 0, 2 * Math.PI);
+    ctx.fill();
+  }
 
+  // Draw obstacles (trees)
   if (obstacles) {
-    ctx.fillStyle = '#654321'; // A dark, solid brown for obstacles
     obstacles.forEach(obstacle => {
-      ctx.fillRect(obstacle.x * scale, obstacle.y * scale, scale, scale);
+      const x = obstacle.x * scale;
+      const y = obstacle.y * scale;
+
+      // Draw trunk
+      ctx.fillStyle = '#8B4513'; // SaddleBrown
+      ctx.fillRect(x + scale * 0.4, y + scale * 0.4, scale * 0.2, scale * 0.6);
+
+      // Draw canopy
+      ctx.fillStyle = '#228B22'; // ForestGreen
+      ctx.beginPath();
+      ctx.arc(x + scale / 2, y + scale / 2, scale / 2, 0, 2 * Math.PI);
+      ctx.fill();
     });
   }
 
@@ -84,7 +106,19 @@ const animationLoop = () => {
 
 onMounted(() => {
   ctx = canvas.value.getContext('2d');
-  animationFrameId = requestAnimationFrame(animationLoop);
+  foodImage = new Image();
+  foodImage.src = foodApple;
+
+  foodImage.onload = () => {
+    if (!animationFrameId) {
+      animationFrameId = requestAnimationFrame(animationLoop);
+    }
+  };
+
+  // If the image is already cached and loaded, start the loop immediately.
+  if (foodImage.complete && !animationFrameId) {
+    animationFrameId = requestAnimationFrame(animationLoop);
+  }
 });
 
 onUnmounted(() => {

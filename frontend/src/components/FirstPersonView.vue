@@ -5,6 +5,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
+import foodApple from '../assets/food-apple.png';
 
 const props = defineProps({
   gameState: Object,
@@ -21,7 +22,7 @@ const initThree = () => {
 
   // Scene
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000);
+  scene.background = new THREE.Color(0x87ceeb); // Sky blue
 
   // Camera
   camera = new THREE.PerspectiveCamera(75, container.value.clientWidth / container.value.clientHeight, 0.1, 1000);
@@ -33,29 +34,37 @@ const initThree = () => {
   container.value.appendChild(renderer.domElement);
 
   // Lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambientLight);
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(5, 10, 7.5);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  directionalLight.position.set(10, 15, 10);
   scene.add(directionalLight);
 
   // Ground
   const groundGeometry = new THREE.PlaneGeometry(props.gameState.boardSize, props.gameState.boardSize);
-  const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+  const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22, roughness: 0.9 }); // Forest green
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.5;
   scene.add(ground);
 
-  // Walls
-  const wallGeometry = new THREE.BoxGeometry(props.gameState.boardSize, 2, props.gameState.boardSize);
-  const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 }); // Dark grey solid color
-  wall = new THREE.Mesh(wallGeometry, wallMaterial);
-  wall.position.y = 0.5;
-  scene.add(wall);
+  // Boundary Trees
+  const boundaryTrees = new THREE.Group();
+  const boardSize = props.gameState.boardSize;
+  const centerOffset = boardSize / 2;
+  // Top and bottom walls
+  for (let i = 0; i < boardSize; i++) {
+    boundaryTrees.add(createTree(i - centerOffset, -centerOffset));
+    boundaryTrees.add(createTree(i - centerOffset, centerOffset - 1));
+  }
+  // Left and right walls (excluding corners)
+  for (let i = 1; i < boardSize - 1; i++) {
+    boundaryTrees.add(createTree(-centerOffset, i - centerOffset));
+    boundaryTrees.add(createTree(centerOffset - 1, i - centerOffset));
+  }
+  scene.add(boundaryTrees);
 
   // Other Snake Placeholder
-  const snakeMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
   otherSnake = new THREE.Group();
   scene.add(otherSnake);
 
@@ -63,14 +72,37 @@ const initThree = () => {
   obstaclesGroup = new THREE.Group();
   scene.add(obstaclesGroup);
 
-  // Food Placeholder
-  const foodGeometry = new THREE.SphereGeometry(0.5, 16, 16);
-  const foodMaterial = new THREE.MeshStandardMaterial({ color: 0xf1c40f });
+  // Food Placeholder (Apple)
+  const textureLoader = new THREE.TextureLoader();
+  const foodTexture = textureLoader.load(foodApple);
+  const foodGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+  const foodMaterial = new THREE.MeshStandardMaterial({ map: foodTexture });
   foodMesh = new THREE.Mesh(foodGeometry, foodMaterial);
   scene.add(foodMesh);
 
 
   animate();
+};
+
+const createTree = (x, z) => {
+    const tree = new THREE.Group();
+
+    // Trunk
+    const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.3, 1.5, 8);
+    const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // SaddleBrown
+    const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+    trunk.position.y = 0.25;
+    tree.add(trunk);
+
+    // Canopy
+    const canopyGeometry = new THREE.ConeGeometry(0.8, 2, 8);
+    const canopyMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // ForestGreen
+    const canopy = new THREE.Mesh(canopyGeometry, canopyMaterial);
+    canopy.position.y = 1.75;
+    tree.add(canopy);
+
+    tree.position.set(x, 0, z);
+    return tree;
 };
 
 const updateScene = () => {
@@ -110,9 +142,9 @@ const updateScene = () => {
     const otherPlayerId = Object.keys(players).find(id => id !== props.playerId);
     if (otherPlayerId) {
         const otherPlayer = players[otherPlayerId];
-        const snakeMaterial = new THREE.MeshStandardMaterial({ color: otherPlayer.color });
+        const snakeMaterial = new THREE.MeshStandardMaterial({ color: otherPlayer.color, roughness: 0.3 });
         otherPlayer.snake.forEach(segment => {
-            const segmentGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const segmentGeometry = new THREE.SphereGeometry(0.5, 16, 16);
             const segmentMesh = new THREE.Mesh(segmentGeometry, snakeMaterial);
             segmentMesh.position.set(segment.x - centerOffset, 0, segment.y - centerOffset);
             otherSnake.add(segmentMesh);
@@ -122,12 +154,8 @@ const updateScene = () => {
     // Update obstacles
     obstaclesGroup.clear();
     if (obstacles) {
-        const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
         obstacles.forEach(obstacle => {
-            const obstacleGeometry = new THREE.BoxGeometry(1, 1, 1);
-            const obstacleMesh = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
-            obstacleMesh.position.set(obstacle.x - centerOffset, 0, obstacle.y - centerOffset);
-            obstaclesGroup.add(obstacleMesh);
+            obstaclesGroup.add(createTree(obstacle.x - centerOffset, obstacle.y - centerOffset));
         });
     }
 
