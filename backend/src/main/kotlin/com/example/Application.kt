@@ -32,8 +32,8 @@ fun Application.module() {
                 subclass(ClientMessage.SetPlayerName::class)
                 subclass(ClientMessage.PlayerReady::class)
                 subclass(ClientMessage.ResetGame::class)
-                subclass(ClientMessage.StartMoving::class)
-                subclass(ClientMessage.StopMoving::class)
+                subclass(ClientMessage.SetTurning::class)
+                subclass(ClientMessage.SetMoving::class)
                 subclass(ClientMessage.AddAiPlayer::class)
                 subclass(ClientMessage.HardResetGame::class)
             }

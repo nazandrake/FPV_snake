@@ -41,7 +41,7 @@
                   </ul>
               </div>
           </div>
-          <FirstPersonView :game-state="gameState" :player-id="playerId" @start-moving="handleStartMoving" @stop-moving="handleStopMoving" />
+          <FirstPersonView :game-state="gameState" :player-id="playerId" @set-turning="handleSetTurning" @set-moving="handleSetMoving" />
           <TopDownView :game-state="gameState" :player-id="playerId" />
       </div>
 
@@ -58,7 +58,7 @@
                 </li>
             </ul>
         </div>
-        <button @click="resetGame">Start Again</button>
+        <button @click="hardResetGame">Start Again</button>
       </div>
     </div>
   </div>
@@ -139,12 +139,12 @@ const addAiPlayer = () => {
   sendMessage({ type: 'AddAiPlayer' });
 };
 
-const handleStartMoving = (direction) => {
-    sendMessage({ type: 'StartMoving', direction });
+const handleSetTurning = (turnDirection) => {
+    sendMessage({ type: 'SetTurning', turnDirection });
 };
 
-const handleStopMoving = () => {
-    sendMessage({ type: 'StopMoving' });
+const handleSetMoving = (isMoving) => {
+    sendMessage({ type: 'SetMoving', isMoving });
 };
 
 const connectWebSocket = () => {

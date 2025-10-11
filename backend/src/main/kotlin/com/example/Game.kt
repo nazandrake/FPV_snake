@@ -3,6 +3,9 @@ package com.example
 import kotlinx.serialization.Serializable
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 @Serializable
 enum class GamePhase {
@@ -45,6 +48,9 @@ class Game {
     private var winner: String? = null
     private var tickCounter = 0
 
+    private val turnSpeed = 0.1f // Radians per tick
+    private val moveSpeed = 0.5f // Units per tick
+
     init {
         food = generateFood()
     }
@@ -62,7 +68,7 @@ class Game {
 
     private fun generateRandomStartPosition(): Point {
         while (true) {
-            val point = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
+            val point = Point(Random.nextInt(boardSize).toFloat(), Random.nextInt(boardSize).toFloat())
             if (players.values.none { it.position == point } && obstacles.none { it == point }) {
                 return point
             }
@@ -77,7 +83,7 @@ class Game {
         players[id] = Player(
             id = id,
             position = startPoint,
-            direction = Direction.RIGHT,
+            direction = 0.0f, // Facing right
             color = color,
             name = "Player ${playerIndex + 1}"
         )
@@ -91,7 +97,7 @@ class Game {
         players[aiId] = Player(
             id = aiId,
             position = startPoint,
-            direction = Direction.RIGHT,
+            direction = 0.0f,
             color = color,
             name = "Computer",
             isAi = true,
@@ -138,9 +144,11 @@ class Game {
         players.values.forEach { player ->
             player.score = 0
             player.ready = player.isAi // AI is always ready
-            player.direction = Direction.RIGHT
+            player.direction = 0.0f
             player.survivalTimer = 120
             player.timerBuffTimeGained = 0
+            player.turning = TurnDirection.NONE
+            player.isMovingForward = false
         }
 
         food = generateFood()
@@ -149,7 +157,7 @@ class Game {
         players.values.forEach { player ->
             var startPoint: Point
             do {
-                startPoint = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
+                startPoint = Point(Random.nextInt(boardSize).toFloat(), Random.nextInt(boardSize).toFloat())
             } while (usedPositions.contains(startPoint))
             usedPositions.add(startPoint)
             player.position = startPoint
@@ -165,68 +173,42 @@ class Game {
         food = generateFood()
     }
 
-    fun changeDirection(id: String, newDirection: Direction) {
-        val player = players[id] ?: return
-        player.direction = newDirection
+    fun setTurning(id: String, turnDirection: TurnDirection) {
+        players[id]?.turning = turnDirection
     }
 
-    fun startMoving(id: String, direction: Direction) {
-        players[id]?.let {
-            it.isMoving = true
-            it.movingDirection = direction
-            it.direction = direction // Update main direction for camera
-        }
-    }
-
-    fun stopMoving(id: String) {
-        players[id]?.isMoving = false
-    }
-
-    private fun movePlayer(player: Player) {
-        val moveDirection = player.movingDirection ?: return
-        var newPosition = player.position
-        when (moveDirection) {
-            Direction.UP -> newPosition = Point(player.position.x, player.position.y - 1)
-            Direction.DOWN -> newPosition = Point(player.position.x, player.position.y + 1)
-            Direction.LEFT -> newPosition = Point(player.position.x - 1, player.position.y)
-            Direction.RIGHT -> newPosition = Point(player.position.x + 1, player.position.y)
-        }
-
-        // Wall collision
-        if (newPosition.x < 0 || newPosition.x >= boardSize || newPosition.y < 0 || newPosition.y >= boardSize) {
-            return // Stop movement
-        }
-
-        // Obstacle collision
-        if (obstacles.any { it == newPosition }) {
-            return // Stop movement
-        }
-
-        // Other player collision
-        if (players.values.filter { it.id != player.id }.any { it.position == newPosition }) {
-            return // Stop movement
-        }
-
-        player.position = newPosition
+    fun setMoving(id: String, isMoving: Boolean) {
+        players[id]?.isMovingForward = isMoving
     }
 
     fun update() {
         if (phase != GamePhase.RUNNING) return
 
-        // Process movement for all players
+        // AI Player Logic
         val currentGameState = getGameState()
+        players.values.filter { it.isAi }.forEach { aiPlayer ->
+            AIPlayer.updateAiPlayer(aiPlayer, currentGameState)
+        }
+
+        // Process movement for all players
         players.values.forEach { player ->
-            if (player.isAi) {
-                // AI decides its move on every tick
-                val move = AIPlayer.getMove(currentGameState, player.id)
-                if (move != null) {
-                    player.movingDirection = move
-                    movePlayer(player)
-                }
-            } else {
-                // Human player moves if the key is held down
-                if (player.isMoving) {
-                    movePlayer(player)
+            // 1. Update direction if turning
+            when (player.turning) {
+                TurnDirection.LEFT -> player.direction += turnSpeed
+                TurnDirection.RIGHT -> player.direction -= turnSpeed
+                TurnDirection.NONE -> {}
+            }
+
+            // 2. Update position if moving
+            if (player.isMovingForward) {
+                val speed = if (player.hasSpeedBuff) moveSpeed * 1.5f else moveSpeed
+                val newX = player.position.x + cos(player.direction) * speed
+                val newY = player.position.y + sin(player.direction) * speed
+                val newPosition = Point(newX, newY)
+
+                // 3. Collision detection
+                if (isPositionValid(newPosition, player.id)) {
+                    player.position = newPosition
                 }
             }
         }
@@ -247,19 +229,17 @@ class Game {
         }
         eliminatedPlayers.forEach { removePlayer(it) }
 
-
-        // Check for game over condition
-        if (players.size <= 1 && phase == GamePhase.RUNNING) {
-            phase = GamePhase.GAME_OVER
-            winner = players.keys.firstOrNull()
-        }
+        checkGameOver()
 
         checkConsumables()
         updateBuffs()
     }
 
-    private fun checkCollisions() {
-        // Collision logic is now handled in movePlayer
+    private fun checkGameOver() {
+        if (players.size <= 1 && phase == GamePhase.RUNNING) {
+            phase = GamePhase.GAME_OVER
+            winner = players.keys.firstOrNull()
+        }
     }
 
     private fun updateBuffs() {
@@ -272,17 +252,33 @@ class Game {
     }
 
 
+    private fun isPositionValid(position: Point, playerId: String): Boolean {
+        // Wall collision
+        if (position.x < 0 || position.x >= boardSize || position.y < 0 || position.y >= boardSize) {
+            return false
+        }
+        // Obstacle collision
+        if (obstacles.any { distance(it, position) < 1.0f }) {
+            return false
+        }
+        // Other player collision
+        if (players.values.any { it.id != playerId && distance(it.position, position) < 1.0f }) {
+            return false
+        }
+        return true
+    }
+
     private fun checkConsumables() {
         players.values.forEach { player ->
             // Check for food
-            if (player.position == food) {
+            if (distance(player.position, food) < 1.0f) {
                 player.score++
                 player.survivalTimer = 120 // Reset timer
                 food = generateFood()
             }
 
             // Check for buffs
-            val consumedBuff = buffs.find { it.position == player.position }
+            val consumedBuff = buffs.find { distance(it.position, player.position) < 1.0f }
             if (consumedBuff != null) {
                 val currentTime = System.currentTimeMillis()
                 if (currentTime - player.lastBuffConsumptionTime >= 30000) { // 30-second cooldown
@@ -314,10 +310,14 @@ class Game {
         }
     }
 
+    private fun distance(p1: Point, p2: Point): Float {
+        return sqrt((p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y))
+    }
+
     private fun generateFood(): Point {
         while (true) {
-            val point = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
-            if (players.values.none { it.position == point } && obstacles.none { it == point } && buffs.none { it.position == point }) {
+            val point = Point(Random.nextInt(boardSize).toFloat(), Random.nextInt(boardSize).toFloat())
+            if (players.values.none { distance(it.position, point) < 2.0f } && obstacles.none { distance(it, point) < 2.0f } && buffs.none { distance(it.position, point) < 2.0f }) {
                 return point
             }
         }
@@ -331,8 +331,8 @@ class Game {
 
     private fun spawnBuff(type: BuffType) {
         while (true) {
-            val point = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
-            if (players.values.none { it.position == point } && obstacles.none { it == point } && food != point && buffs.none { it.position == point }) {
+            val point = Point(Random.nextInt(boardSize).toFloat(), Random.nextInt(boardSize).toFloat())
+            if (players.values.none { distance(it.position, point) < 2.0f } && obstacles.none { distance(it, point) < 2.0f } && distance(food, point) < 2.0f && buffs.none { distance(it.position, point) < 2.0f }) {
                 buffs.add(Buff(point, type))
                 break
             }
@@ -343,12 +343,12 @@ class Game {
         val newObstacles = mutableListOf<Point>()
         for (i in 0..10) {
             while (true) {
-                val point = Point(Random.nextInt(boardSize), Random.nextInt(boardSize))
+                val point = Point(Random.nextInt(boardSize).toFloat(), Random.nextInt(boardSize).toFloat())
                 if (
-                    players.values.none { it.position == point } &&
-                    point != food &&
-                    !newObstacles.contains(point) &&
-                    buffs.none { it.position == point }
+                    players.values.none { distance(it.position, point) < 2.0f } &&
+                    distance(food, point) > 2.0f &&
+                    newObstacles.none { distance(it, point) < 2.0f } &&
+                    buffs.none { distance(it.position, point) < 2.0f }
                 ) {
                     newObstacles.add(point)
                     break

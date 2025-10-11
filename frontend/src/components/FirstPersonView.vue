@@ -11,7 +11,7 @@ const props = defineProps({
   playerId: String,
 });
 
-const emit = defineEmits(['start-moving', 'stop-moving']);
+const emit = defineEmits(['set-turning', 'set-moving']);
 
 const container = ref(null);
 let scene, camera, renderer;
@@ -49,6 +49,19 @@ const initThree = () => {
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.5;
     scene.add(ground);
+
+    // Boundary Trees
+    const boundaryTrees = new THREE.Group();
+    const boardSize = props.gameState.boardSize;
+    const centerOffset = boardSize / 2;
+    const treeSpacing = 2; // Denser trees
+    for (let i = -centerOffset; i <= centerOffset; i += treeSpacing) {
+        boundaryTrees.add(createTree(i, -centerOffset));
+        boundaryTrees.add(createTree(i, centerOffset));
+        boundaryTrees.add(createTree(-centerOffset, i));
+        boundaryTrees.add(createTree(centerOffset, i));
+    }
+    scene.add(boundaryTrees);
 
     // Groups for objects
     playersGroup = new THREE.Group();
@@ -117,6 +130,7 @@ const updateScene = () => {
         const player = players[id];
         const character = createCharacter(player.color);
         character.position.set(player.position.x - centerOffset, 0, player.position.y - centerOffset);
+        character.rotation.y = -player.direction; // Rotate character
         playersGroup.add(character);
     }
 
@@ -127,21 +141,11 @@ const updateScene = () => {
         camera.position.set(head.x - centerOffset, 0.5, head.y - centerOffset);
 
         // Point camera in the direction of movement
-        const lookAtPosition = new THREE.Vector3();
-        switch (mainPlayer.direction) {
-            case 'UP':
-                lookAtPosition.set(head.x - centerOffset, 0.5, head.y - centerOffset - 1);
-                break;
-            case 'DOWN':
-                lookAtPosition.set(head.x - centerOffset, 0.5, head.y - centerOffset + 1);
-                break;
-            case 'LEFT':
-                lookAtPosition.set(head.x - centerOffset - 1, 0.5, head.y - centerOffset);
-                break;
-            case 'RIGHT':
-                lookAtPosition.set(head.x - centerOffset + 1, 0.5, head.y - centerOffset);
-                break;
-        }
+        const lookAtPosition = new THREE.Vector3(
+            head.x - centerOffset + Math.cos(mainPlayer.direction),
+            0.5,
+            head.y - centerOffset + Math.sin(mainPlayer.direction)
+        );
         camera.lookAt(lookAtPosition);
     }
 
@@ -184,28 +188,24 @@ const animate = () => {
 
 const onKeyDown = (event) => {
     if (event.repeat) return;
-    let direction = null;
-    switch (event.key) {
-        case 'w': case 'W': direction = 'UP'; break;
-        case 's': case 'S': direction = 'DOWN'; break;
-        case 'a': case 'A': direction = 'LEFT'; break;
-        case 'd': case 'D': direction = 'RIGHT'; break;
-    }
-    if (direction) {
-        emit('start-moving', direction);
+    switch (event.key.toLowerCase()) {
+        case 'w': emit('set-moving', true); break;
+        case 's': emit('set-moving', false); break; // Or handle backward movement
+        case 'a': emit('set-turning', 'LEFT'); break;
+        case 'd': emit('set-turning', 'RIGHT'); break;
     }
 };
 
 const onKeyUp = (event) => {
-    let direction = null;
-    switch (event.key) {
-        case 'w': case 'W': direction = 'UP'; break;
-        case 's': case 'S': direction = 'DOWN'; break;
-        case 'a': case 'A': direction = 'LEFT'; break;
-        case 'd': case 'D': direction = 'RIGHT'; break;
-    }
-    if (direction) {
-        emit('stop-moving');
+    switch (event.key.toLowerCase()) {
+        case 'w':
+        case 's':
+            emit('set-moving', false);
+            break;
+        case 'a':
+        case 'd':
+            emit('set-turning', 'NONE');
+            break;
     }
 };
 
@@ -221,13 +221,11 @@ watch(() => props.gameState, (newGameState) => {
     if (newGameState && container.value && !isInitialized) {
         initThree();
     }
-}, { deep: true });
+}, { deep: true, immediate: true });
 
 onMounted(() => {
     window.addEventListener('resize', onResize);
-    if (props.gameState && !isInitialized) {
-        initThree();
-    }
+    // The watcher will handle initialization once gameState is ready.
 });
 
 onUnmounted(() => {
