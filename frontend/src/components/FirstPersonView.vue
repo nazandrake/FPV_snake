@@ -14,6 +14,7 @@ const props = defineProps({
 
 const container = ref(null);
 let scene, camera, renderer, wall, otherSnake, foodMesh, obstaclesGroup;
+let rainParticles, snowParticles;
 let isInitialized = false;
 
 const initThree = () => {
@@ -31,6 +32,8 @@ const initThree = () => {
   // Renderer
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(container.value.clientWidth, container.value.clientHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.value.appendChild(renderer.domElement);
 
   // Lighting
@@ -38,6 +41,9 @@ const initThree = () => {
   scene.add(ambientLight);
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
   directionalLight.position.set(10, 15, 10);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 2048;
+  directionalLight.shadow.mapSize.height = 2048;
   scene.add(directionalLight);
 
   // Ground
@@ -46,6 +52,7 @@ const initThree = () => {
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.5;
+  ground.receiveShadow = true;
   scene.add(ground);
 
   // Boundary Trees
@@ -78,10 +85,48 @@ const initThree = () => {
   const foodGeometry = new THREE.SphereGeometry(0.4, 16, 16);
   const foodMaterial = new THREE.MeshStandardMaterial({ map: foodTexture });
   foodMesh = new THREE.Mesh(foodGeometry, foodMaterial);
+  foodMesh.castShadow = true;
+  foodMesh.receiveShadow = true;
   scene.add(foodMesh);
 
-
+  initWeatherEffects();
   animate();
+};
+
+const initWeatherEffects = () => {
+  // Rain
+  const rainGeometry = new THREE.BufferGeometry();
+  const rainCount = 10000;
+  const rainVertices = new Float32Array(rainCount * 3);
+  for (let i = 0; i < rainCount * 3; i++) {
+    rainVertices[i] = (Math.random() - 0.5) * 100;
+  }
+  rainGeometry.setAttribute('position', new THREE.BufferAttribute(rainVertices, 3));
+  const rainMaterial = new THREE.PointsMaterial({
+    color: 0xaaaaaa,
+    size: 0.1,
+    transparent: true,
+  });
+  rainParticles = new THREE.Points(rainGeometry, rainMaterial);
+  rainParticles.visible = false;
+  scene.add(rainParticles);
+
+  // Snow
+  const snowGeometry = new THREE.BufferGeometry();
+  const snowCount = 10000;
+  const snowVertices = new Float32Array(snowCount * 3);
+  for (let i = 0; i < snowCount * 3; i++) {
+    snowVertices[i] = (Math.random() - 0.5) * 100;
+  }
+  snowGeometry.setAttribute('position', new THREE.BufferAttribute(snowVertices, 3));
+  const snowMaterial = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.1,
+    transparent: true,
+  });
+  snowParticles = new THREE.Points(snowGeometry, snowMaterial);
+  snowParticles.visible = false;
+  scene.add(snowParticles);
 };
 
 const createTree = (x, z) => {
@@ -92,6 +137,8 @@ const createTree = (x, z) => {
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // SaddleBrown
     const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
     trunk.position.y = 0.25;
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
     tree.add(trunk);
 
     // Canopy
@@ -99,6 +146,8 @@ const createTree = (x, z) => {
     const canopyMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // ForestGreen
     const canopy = new THREE.Mesh(canopyGeometry, canopyMaterial);
     canopy.position.y = 1.75;
+    canopy.castShadow = true;
+    canopy.receiveShadow = true;
     tree.add(canopy);
 
     tree.position.set(x, 0, z);
@@ -107,6 +156,8 @@ const createTree = (x, z) => {
 
 const updateScene = () => {
     if (!props.gameState || !props.playerId) return;
+
+    updateWeatherVisuals();
 
     const { players, food, obstacles, boardSize } = props.gameState;
     const player = players[props.playerId];
@@ -147,6 +198,8 @@ const updateScene = () => {
             const segmentGeometry = new THREE.SphereGeometry(0.5, 16, 16);
             const segmentMesh = new THREE.Mesh(segmentGeometry, snakeMaterial);
             segmentMesh.position.set(segment.x - centerOffset, 0, segment.y - centerOffset);
+            segmentMesh.castShadow = true;
+            segmentMesh.receiveShadow = true;
             otherSnake.add(segmentMesh);
         });
     }
@@ -163,8 +216,80 @@ const updateScene = () => {
     foodMesh.position.set(food.x - centerOffset, 0, food.y - centerOffset);
 };
 
+const updateWeatherVisuals = () => {
+    const { weather, nextWeather, weatherTransitionProgress } = props.gameState;
+
+    const weatherConfigs = {
+        SUNNY: { color: 0x87ceeb, fog: null },
+        RAIN: { color: 0x46494b, fog: new THREE.Fog(0x46494b, 1, 50) },
+        SNOW: { color: 0x9ca3a8, fog: new THREE.Fog(0x9ca3a8, 1, 50) },
+        FOG: { color: 0xcccccc, fog: new THREE.Fog(0xcccccc, 1, 30) },
+        THUNDERSTORM: { color: 0x1d1f21, fog: new THREE.Fog(0x1d1f21, 1, 40) }
+    };
+
+    const currentConfig = weatherConfigs[weather];
+    const nextConfig = nextWeather ? weatherConfigs[nextWeather] : null;
+
+    if (nextConfig && weatherTransitionProgress > 0) {
+        // Interpolate background color
+        const currentColor = new THREE.Color(currentConfig.color);
+        const nextColor = new THREE.Color(nextConfig.color);
+        scene.background.copy(currentColor).lerp(nextColor, weatherTransitionProgress);
+
+        // Interpolate fog
+        if (currentConfig.fog && nextConfig.fog) {
+            scene.fog = currentConfig.fog.clone();
+            scene.fog.color.lerp(nextConfig.fog.color, weatherTransitionProgress);
+            scene.fog.near = currentConfig.fog.near + (nextConfig.fog.near - currentConfig.fog.near) * weatherTransitionProgress;
+            scene.fog.far = currentConfig.fog.far + (nextConfig.fog.far - currentConfig.fog.far) * weatherTransitionProgress;
+        } else if (nextConfig.fog) {
+            scene.fog = nextConfig.fog.clone();
+            scene.fog.color.lerp(new THREE.Color(0xffffff), 1 - weatherTransitionProgress); // Fake starting color
+        } else if (currentConfig.fog) {
+            // No easy way to fade out fog, so just keep it until it's gone
+        } else {
+             scene.fog = null;
+        }
+
+    } else {
+        scene.background.set(currentConfig.color);
+        scene.fog = currentConfig.fog;
+    }
+
+    // Handle particles and flashes
+    rainParticles.visible = weather === 'RAIN' || nextWeather === 'RAIN';
+    rainParticles.material.opacity = weather === 'RAIN' ? (1 - weatherTransitionProgress) : (nextWeather === 'RAIN' ? weatherTransitionProgress : 0);
+
+    snowParticles.visible = weather === 'SNOW' || nextWeather === 'SNOW';
+    snowParticles.material.opacity = weather === 'SNOW' ? (1 - weatherTransitionProgress) : (nextWeather === 'SNOW' ? weatherTransitionProgress : 0);
+
+    if (weather === 'THUNDERSTORM' || (nextWeather === 'THUNDERSTORM' && weatherTransitionProgress > 0.5)) {
+        if (Math.random() < 0.05) {
+            const flash = new THREE.PointLight(0xffffff, 100, 0, 2);
+            flash.position.set(Math.random() * 50 - 25, 20 + Math.random() * 10, Math.random() * 50 - 25);
+            scene.add(flash);
+            setTimeout(() => scene.remove(flash), 100 + Math.random() * 100);
+        }
+    }
+};
+
 const animate = () => {
   requestAnimationFrame(animate);
+
+  if (rainParticles.visible) {
+    rainParticles.position.y -= 0.2;
+    if (rainParticles.position.y < -50) {
+      rainParticles.position.y = 50;
+    }
+  }
+
+  if (snowParticles.visible) {
+    snowParticles.position.y -= 0.05;
+    if (snowParticles.position.y < -50) {
+      snowParticles.position.y = 50;
+    }
+  }
+
   updateScene();
   if (renderer && scene && camera) {
     renderer.render(scene, camera);
