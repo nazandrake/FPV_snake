@@ -7,6 +7,7 @@
 <script setup>
 import { ref, onMounted, watch, onUnmounted } from 'vue';
 import foodApple from '../assets/food-apple.png';
+import grassTexture from '../assets/grass.png';
 
 const props = defineProps({
   gameState: Object,
@@ -17,6 +18,9 @@ const canvasSize = 600;
 let ctx = null;
 let animationFrameId = null;
 let foodImage = null;
+let grassPattern = null;
+let rainParticles = [];
+let snowParticles = [];
 
 // For interpolation
 const previousGameState = ref(null);
@@ -31,8 +35,14 @@ const draw = (interpolationFactor) => {
   const scale = canvasSize / boardSize;
 
   // Draw grass background
-  ctx.fillStyle = '#27ae60'; // Grassy green
+  if (grassPattern) {
+    ctx.fillStyle = grassPattern;
+  } else {
+    ctx.fillStyle = '#27ae60'; // Grassy green
+  }
   ctx.fillRect(0, 0, canvasSize, canvasSize);
+
+  drawWeather(interpolationFactor);
 
   // Draw food (apple)
   if (foodImage && foodImage.complete) {
@@ -94,6 +104,81 @@ const draw = (interpolationFactor) => {
   }
 };
 
+const drawWeather = (interpolationFactor) => {
+  const { weather, nextWeather, weatherTransitionProgress } = currentGameState.value;
+
+  const weatherConfigs = {
+    SUNNY: { overlay: 'rgba(0,0,0,0)' },
+    RAIN: { overlay: 'rgba(0, 0, 0, 0.2)', particles: rainParticles, particleStyle: 'rgba(174,194,224,0.5)' },
+    SNOW: { overlay: 'rgba(255, 255, 255, 0.2)', particles: snowParticles, particleStyle: 'white' },
+    FOG: { overlay: 'rgba(200, 200, 200, 0.5)' },
+    THUNDERSTORM: { overlay: 'rgba(0, 0, 0, 0.5)' },
+  };
+
+  const drawParticles = (particles, style, opacity) => {
+    ctx.globalAlpha = opacity;
+    if (Array.isArray(particles)) {
+        particles.forEach(p => {
+            p.y += p.speed;
+            if (p.y > canvasSize) {
+                p.y = 0;
+                p.x = Math.random() * canvasSize;
+            }
+            ctx.fillStyle = style;
+            if (p.length) { // Rain
+                ctx.fillRect(p.x, p.y, 1, p.length);
+            } else { // Snow
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        });
+    }
+    ctx.globalAlpha = 1.0;
+  };
+
+  const currentConfig = weatherConfigs[weather];
+  const nextConfig = nextWeather ? weatherConfigs[nextWeather] : null;
+
+  if (nextConfig) {
+    // Draw current weather effects, fading out
+    const currentOpacity = 1 - weatherTransitionProgress;
+    ctx.fillStyle = currentConfig.overlay;
+    ctx.globalAlpha = currentOpacity;
+    ctx.fillRect(0, 0, canvasSize, canvasSize);
+    if (currentConfig.particles) {
+        drawParticles(currentConfig.particles, currentConfig.particleStyle, currentOpacity);
+    }
+
+    // Draw next weather effects, fading in
+    const nextOpacity = weatherTransitionProgress;
+    ctx.fillStyle = nextConfig.overlay;
+    ctx.globalAlpha = nextOpacity;
+    ctx.fillRect(0, 0, canvasSize, canvasSize);
+    if (nextConfig.particles) {
+        drawParticles(nextConfig.particles, nextConfig.particleStyle, nextOpacity);
+    }
+    ctx.globalAlpha = 1.0;
+
+  } else {
+    // Draw normal weather
+    ctx.fillStyle = currentConfig.overlay;
+    ctx.fillRect(0, 0, canvasSize, canvasSize);
+    if (currentConfig.particles) {
+        drawParticles(currentConfig.particles, currentConfig.particleStyle, 1.0);
+    }
+  }
+
+  // Flashes for thunderstorm
+  if ((weather === 'THUNDERSTORM' && (!nextWeather || weatherTransitionProgress < 0.5)) ||
+      (nextWeather === 'THUNDERSTORM' && weatherTransitionProgress >= 0.5)) {
+    if (Math.random() < 0.05) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillRect(0, 0, canvasSize, canvasSize);
+    }
+  }
+};
+
 const animationLoop = () => {
     const now = Date.now();
     const timeSinceUpdate = now - lastUpdateTime;
@@ -108,6 +193,27 @@ onMounted(() => {
   ctx = canvas.value.getContext('2d');
   foodImage = new Image();
   foodImage.src = foodApple;
+
+  const grassImage = new Image();
+  grassImage.src = grassTexture;
+  grassImage.onload = () => {
+    grassPattern = ctx.createPattern(grassImage, 'repeat');
+  };
+
+  for (let i = 0; i < 500; i++) {
+    rainParticles.push({
+      x: Math.random() * canvasSize,
+      y: Math.random() * canvasSize,
+      length: Math.random() * 20,
+      speed: Math.random() * 5 + 2
+    });
+    snowParticles.push({
+      x: Math.random() * canvasSize,
+      y: Math.random() * canvasSize,
+      radius: Math.random() * 2 + 1,
+      speed: Math.random() * 1 + 0.5
+    });
+  }
 
   foodImage.onload = () => {
     if (!animationFrameId) {
