@@ -16,7 +16,7 @@ COPY backend/ /app/backend/
 RUN gradle build -x test
 
 # Stage 3: Create the final, self-contained image
-FROM openjdk:17-alpine
+FROM amazoncorretto:17-alpine-jdk
 WORKDIR /app
 # Copy only the final, runnable "fat" JAR file
 COPY --from=backend-builder /app/backend/build/libs/backend-all.jar /app/app.jar
