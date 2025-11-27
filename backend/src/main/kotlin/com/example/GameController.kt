@@ -58,12 +58,13 @@ class GameController(private val json: Json) {
                 is ClientMessage.HardResetGame -> game.hardResetGame()
                 is ClientMessage.SetTurning -> game.setTurning(id, clientMessage.turnDirection)
                 is ClientMessage.SetMoving -> game.setMoving(id, clientMessage.isMoving)
+                is ClientMessage.SetMovingBackward -> game.setMovingBackward(id, clientMessage.isMoving)
                 is ClientMessage.AddAiPlayer -> game.addAiPlayer()
             }
 
             // Don't wait for the next tick for lobby updates.
             // Movement updates will be sent by the game loop.
-            if (clientMessage !is ClientMessage.SetTurning && clientMessage !is ClientMessage.SetMoving) {
+            if (clientMessage !is ClientMessage.SetTurning && clientMessage !is ClientMessage.SetMoving && clientMessage !is ClientMessage.SetMovingBackward) {
                 broadcastGameState()
             }
         } catch (e: Exception) {

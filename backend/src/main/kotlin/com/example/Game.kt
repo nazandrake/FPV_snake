@@ -15,6 +15,15 @@ enum class GamePhase {
 }
 
 @Serializable
+enum class Weather {
+    CLEAR,
+    RAIN,
+    SNOW,
+    FOG,
+    THUNDERSTORM
+}
+
+@Serializable
 enum class BuffType {
     SPEED,
     TIMER
@@ -27,26 +36,42 @@ data class Buff(
 )
 
 @Serializable
+data class TemporaryObstacle(
+    val position: Point,
+    val despawnTick: Long
+)
+
+@Serializable
 data class GameState(
     val players: Map<String, Player>,
     val food: Point,
     val obstacles: List<Point>,
+    val temporaryObstacles: List<TemporaryObstacle>,
     val buffs: List<Buff>,
     val boardSize: Int,
     val phase: GamePhase,
-    val winner: String? = null
+    val winner: String? = null,
+    val weather: Weather,
+    val nextWeather: Weather?,
+    val weatherTransitionProgress: Float
 )
 
 class Game {
     private val players = ConcurrentHashMap<String, Player>()
     private lateinit var food: Point
     private var obstacles = listOf<Point>()
+    private var temporaryObstacles = mutableListOf<TemporaryObstacle>()
     private var buffs = mutableListOf<Buff>()
     private val boardSize = 60
     var phase = GamePhase.LOBBY
         private set
     private var winner: String? = null
     private var tickCounter = 0
+    private var weather = Weather.CLEAR
+    private var nextWeather: Weather? = null
+    private var weatherTransitionProgress = 0.0f
+    private val weatherTransitionDuration = 200 // ticks for full transition
+    private var weatherTickCounter = 0
 
     private val turnSpeed = 0.1f // Radians per tick
     private val moveSpeed = 0.5f // Units per tick
@@ -56,7 +81,7 @@ class Game {
     }
 
     fun getGameState(): GameState {
-        return GameState(players, food, obstacles, buffs, boardSize, phase, winner)
+        return GameState(players, food, obstacles, temporaryObstacles, buffs, boardSize, phase, winner, weather, nextWeather, weatherTransitionProgress)
     }
 
     private fun generateRandomColor(): String {
@@ -69,7 +94,7 @@ class Game {
     private fun generateRandomStartPosition(): Point {
         while (true) {
             val point = Point(Random.nextInt(boardSize).toFloat(), Random.nextInt(boardSize).toFloat())
-            if (players.values.none { it.position == point } && obstacles.none { it == point }) {
+            if (players.values.none { distance(it.position, point) < 2.0f } && obstacles.none { distance(it, point) < 2.0f }) {
                 return point
             }
         }
@@ -124,6 +149,9 @@ class Game {
     fun setPlayerReady(id: String, isReady: Boolean) {
         players[id]?.ready = isReady
         if (phase == GamePhase.LOBBY && players.isNotEmpty() && players.values.all { it.ready }) {
+            if (players.size == 1) {
+                addAiPlayer()
+            }
             startGame()
         }
     }
@@ -133,12 +161,29 @@ class Game {
         tickCounter = 0
         generateObstacles()
         generateBuffs()
+
+        // Re-position players to avoid spawning in obstacles
+        val usedPositions = mutableSetOf<Point>(food)
+        obstacles.forEach { usedPositions.add(it) }
+        buffs.forEach { usedPositions.add(it.position) }
+
+        players.values.forEach { player ->
+            player.position = generateRandomStartPosition()
+            if (!isPlayerValid(player)) {
+                removePlayer(player.id)
+            }
+        }
+    }
+
+    private fun isPlayerValid(player: Player): Boolean {
+        return isPositionValid(player.position, player.id)
     }
 
     fun resetGame() {
         phase = GamePhase.LOBBY
         winner = null
         obstacles = listOf()
+        temporaryObstacles.clear()
         buffs.clear()
         // Reset players
         players.values.forEach { player ->
@@ -169,6 +214,7 @@ class Game {
         winner = null
         players.clear()
         obstacles = listOf()
+        temporaryObstacles.clear()
         buffs.clear()
         food = generateFood()
     }
@@ -179,6 +225,10 @@ class Game {
 
     fun setMoving(id: String, isMoving: Boolean) {
         players[id]?.isMovingForward = isMoving
+    }
+
+    fun setMovingBackward(id: String, isMoving: Boolean) {
+        players[id]?.isMovingBackward = isMoving
     }
 
     fun update() {
@@ -200,10 +250,26 @@ class Game {
             }
 
             // 2. Update position if moving
-            if (player.isMovingForward) {
-                val speed = if (player.hasSpeedBuff) moveSpeed * 1.5f else moveSpeed
-                val newX = player.position.x + cos(player.direction) * speed
-                val newY = player.position.y + sin(player.direction) * speed
+            if (player.isMovingForward || player.isMovingBackward) {
+                var speed = if (player.hasSpeedBuff) moveSpeed * 1.5f else moveSpeed
+                if (player.isMovingBackward) {
+                    speed *= -0.5f // Move backward at half speed
+                }
+                // Apply weather effects to speed
+                if (weather == Weather.SNOW) {
+                    speed *= 0.8f // 20% slower in snow
+                }
+
+                var newX = player.position.x + cos(player.direction) * speed
+                var newY = player.position.y + sin(player.direction) * speed
+
+                // Apply weather effects to movement
+                if (weather == Weather.RAIN) {
+                    // Add a slippery effect
+                    newX += (Random.nextFloat() - 0.5f) * 0.2f
+                    newY += (Random.nextFloat() - 0.5f) * 0.2f
+                }
+
                 val newPosition = Point(newX, newY)
 
                 // 3. Collision detection
@@ -229,10 +295,44 @@ class Game {
         }
         eliminatedPlayers.forEach { removePlayer(it) }
 
+        updateWeather()
         checkGameOver()
 
         checkConsumables()
         updateBuffs()
+    }
+
+    private fun updateWeather() {
+        if (nextWeather == null) {
+            // Pick a new weather type randomly, excluding the current one
+            if (Random.nextInt(500) == 0) { // Chance to change weather
+                val availableWeathers = Weather.values().filter { it != weather }
+                nextWeather = availableWeathers[Random.nextInt(availableWeathers.size)]
+                weatherTickCounter = 0
+            }
+        } else {
+            weatherTickCounter++
+            weatherTransitionProgress = (weatherTickCounter.toFloat() / weatherTransitionDuration).coerceIn(0.0f, 1.0f)
+
+            if (weatherTransitionProgress >= 1.0f) {
+                weather = nextWeather!!
+                nextWeather = null
+                weatherTransitionProgress = 0.0f
+                weatherTickCounter = 0
+            }
+        }
+
+        // Handle ongoing weather effects
+        if (weather == Weather.THUNDERSTORM) {
+            if (Random.nextInt(100) == 0) { // Chance of lightning strike
+                val strikePosition = Point(Random.nextInt(boardSize).toFloat(), Random.nextInt(boardSize).toFloat())
+                val despawnTick = tickCounter + 100 // Lasts for 100 ticks
+                temporaryObstacles.add(TemporaryObstacle(strikePosition, despawnTick.toLong()))
+            }
+        }
+
+        // Remove despawned temporary obstacles
+        temporaryObstacles.removeAll { it.despawnTick <= tickCounter }
     }
 
     private fun checkGameOver() {
@@ -259,6 +359,10 @@ class Game {
         }
         // Obstacle collision
         if (obstacles.any { distance(it, position) < 1.0f }) {
+            return false
+        }
+        // Temporary obstacle collision
+        if (temporaryObstacles.any { distance(it.position, position) < 1.0f }) {
             return false
         }
         // Other player collision

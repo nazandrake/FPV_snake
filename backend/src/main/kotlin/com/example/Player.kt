@@ -23,7 +23,8 @@ data class Player(
     var hasSpeedBuff: Boolean = false,
     var speedBuffEndTime: Long = 0,
     var turning: TurnDirection = TurnDirection.NONE,
-    var isMovingForward: Boolean = false
+    var isMovingForward: Boolean = false,
+    var isMovingBackward: Boolean = false
 )
 
 @Serializable
