@@ -20,8 +20,7 @@ let scene, camera, renderer;
 let isInitialized = false;
 let playersGroup, foodMesh, obstaclesGroup, buffsGroup;
 let rainParticles, snowParticles, lightning;
-let noise;
-let headBobTime = 0;
+let noise, groundMaterial;
 
 const initThree = () => {
     if (!container.value || !props.gameState || isInitialized) return;
@@ -71,7 +70,7 @@ const initThree = () => {
     }
     groundGeometry.computeVertexNormals();
 
-    const groundMaterial = new THREE.MeshStandardMaterial({ map: grassTexture, roughness: 0.9 });
+    groundMaterial = new THREE.MeshStandardMaterial({ map: grassTexture, roughness: 0.9 });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.5;
@@ -206,7 +205,7 @@ const createTree = (x, z) => {
     tree.add(canopy);
 
     const groundY = noise.perlin2(x / 10, z / 10) * 2;
-    tree.position.set(x, groundY, z);
+    tree.position.set(x, groundY - 0.5, z); // Adjust for ground level
     return tree;
 };
 
@@ -235,20 +234,14 @@ const updateScene = () => {
         const head = mainPlayer.position;
         const x = head.x - centerOffset;
         const z = head.y - centerOffset;
-        let y = noise.perlin2(x / 10, z / 10) * 2;
+        const y = noise.perlin2(x / 10, z / 10) * 2;
 
-        // Head bob
-        if (mainPlayer.isMovingForward || mainPlayer.isMovingBackward) {
-            headBobTime += 0.2;
-            y += Math.sin(headBobTime) * 0.05;
-        }
-
-        camera.position.set(x, y + 0.5, z);
+        camera.position.set(x, y + 0.7, z); // Raise camera slightly
 
         // Point camera in the direction of movement
         const lookAtPosition = new THREE.Vector3(
             x + Math.cos(mainPlayer.direction),
-            y + 0.5,
+            y + 0.7, // Match camera height
             z + Math.sin(mainPlayer.direction)
         );
         camera.lookAt(lookAtPosition);
@@ -306,8 +299,13 @@ const updateWeather = () => {
     const { weather, nextWeather, weatherTransitionProgress } = props.gameState;
     const boardSize = props.gameState.boardSize;
 
+    // Reset ground material to default
+    groundMaterial.roughness = 0.9;
+    groundMaterial.color.set(0xffffff);
+
     const applyWeather = (type, alpha) => {
         if (type === 'RAIN') {
+            groundMaterial.roughness = 0.4;
             rainParticles.visible = true;
             rainParticles.material.opacity = alpha;
             const positions = rainParticles.geometry.attributes.position.array;
@@ -321,6 +319,7 @@ const updateWeather = () => {
             }
             rainParticles.geometry.attributes.position.needsUpdate = true;
         } else if (type === 'SNOW') {
+            groundMaterial.color.set(0xdddddd);
             snowParticles.visible = true;
             snowParticles.material.opacity = alpha;
             const positions = snowParticles.geometry.attributes.position.array;

@@ -169,7 +169,14 @@ class Game {
 
         players.values.forEach { player ->
             player.position = generateRandomStartPosition()
+            if (!isPlayerValid(player)) {
+                removePlayer(player.id)
+            }
         }
+    }
+
+    private fun isPlayerValid(player: Player): Boolean {
+        return isPositionValid(player.position, player.id)
     }
 
     fun resetGame() {
