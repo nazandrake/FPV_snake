@@ -41,7 +41,7 @@
                   </ul>
               </div>
           </div>
-          <FirstPersonView :game-state="gameState" :player-id="playerId" @set-turning="handleSetTurning" @set-moving="handleSetMoving" />
+          <FirstPersonView :game-state="gameState" :player-id="playerId" @set-turning="handleSetTurning" @set-moving="handleSetMoving" @set-moving-backward="handleSetMovingBackward" />
           <TopDownView :game-state="gameState" :player-id="playerId" />
       </div>
 
@@ -145,6 +145,10 @@ const handleSetTurning = (turnDirection) => {
 
 const handleSetMoving = (isMoving) => {
     sendMessage({ type: 'SetMoving', isMoving });
+};
+
+const handleSetMovingBackward = (isMoving) => {
+    sendMessage({ type: 'SetMovingBackward', isMoving });
 };
 
 const connectWebSocket = () => {

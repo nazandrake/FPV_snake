@@ -22,6 +22,9 @@ sealed class ClientMessage {
     @SerialName("SetMoving")
     data class SetMoving(val isMoving: Boolean) : ClientMessage()
     @Serializable
+    @SerialName("SetMovingBackward")
+    data class SetMovingBackward(val isMoving: Boolean) : ClientMessage()
+    @Serializable
     @SerialName("AddAiPlayer")
     object AddAiPlayer : ClientMessage()
     @Serializable

@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "noisejs": "^2.1.0",
     "three": "^0.158.0",
     "vue": "^3.3.8"
   },

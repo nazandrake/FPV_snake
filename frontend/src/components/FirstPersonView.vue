@@ -5,18 +5,23 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
+import { Noise } from 'noisejs';
+import grassImageUrl from '../assets/grass.jpg';
 
 const props = defineProps({
   gameState: Object,
   playerId: String,
 });
 
-const emit = defineEmits(['set-turning', 'set-moving']);
+const emit = defineEmits(['set-turning', 'set-moving', 'set-moving-backward']);
 
 const container = ref(null);
 let scene, camera, renderer;
 let isInitialized = false;
 let playersGroup, foodMesh, obstaclesGroup, buffsGroup;
+let rainParticles, snowParticles, lightning;
+let noise;
+let headBobTime = 0;
 
 const initThree = () => {
     if (!container.value || !props.gameState || isInitialized) return;
@@ -33,35 +38,76 @@ const initThree = () => {
     // Renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.value.clientWidth, container.value.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.value.appendChild(renderer.domElement);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    directionalLight.position.set(10, 15, 10);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(20, 30, 20);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 500;
     scene.add(directionalLight);
 
     // Ground
-    const groundGeometry = new THREE.PlaneGeometry(props.gameState.boardSize, props.gameState.boardSize);
-    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22, roughness: 0.9 });
+    const textureLoader = new THREE.TextureLoader();
+    const grassTexture = textureLoader.load(grassImageUrl);
+    grassTexture.wrapS = THREE.RepeatWrapping;
+    grassTexture.wrapT = THREE.RepeatWrapping;
+    grassTexture.repeat.set(20, 20);
+
+    const groundGeometry = new THREE.PlaneGeometry(props.gameState.boardSize, props.gameState.boardSize, 100, 100);
+    noise = new Noise(Math.random());
+    const vertices = groundGeometry.attributes.position.array;
+    for (let i = 0; i <= vertices.length; i += 3) {
+        const x = vertices[i];
+        const y = vertices[i + 1];
+        vertices[i + 2] = noise.perlin2(x / 10, y / 10) * 2;
+    }
+    groundGeometry.computeVertexNormals();
+
+    const groundMaterial = new THREE.MeshStandardMaterial({ map: grassTexture, roughness: 0.9 });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.5;
+    ground.receiveShadow = true;
     scene.add(ground);
 
     // Boundary Trees
     const boundaryTrees = new THREE.Group();
     const boardSize = props.gameState.boardSize;
     const centerOffset = boardSize / 2;
-    const treeSpacing = 2; // Denser trees
-    for (let i = -centerOffset; i <= centerOffset; i += treeSpacing) {
-        boundaryTrees.add(createTree(i, -centerOffset));
-        boundaryTrees.add(createTree(i, centerOffset));
-        boundaryTrees.add(createTree(-centerOffset, i));
-        boundaryTrees.add(createTree(centerOffset, i));
+    const treeSpacing = 1; // Even denser trees
+    for (let i = -centerOffset - 20; i <= centerOffset + 20; i += treeSpacing) {
+        for (let j = 0; j < 5; j++) {
+            boundaryTrees.add(createTree(i, -centerOffset - j * 2 + (Math.random() - 0.5) * 2));
+            boundaryTrees.add(createTree(i, centerOffset + j * 2 + (Math.random() - 0.5) * 2));
+        }
+    }
+     for (let i = -centerOffset; i <= centerOffset; i += treeSpacing) {
+        for (let j = 0; j < 5; j++) {
+            boundaryTrees.add(createTree(-centerOffset - j * 2 + (Math.random() - 0.5) * 2, i));
+            boundaryTrees.add(createTree(centerOffset + j * 2 + (Math.random() - 0.5) * 2, i));
+        }
     }
     scene.add(boundaryTrees);
+
+    // Add more random trees
+    const interiorTrees = new THREE.Group();
+    for (let i = 0; i < 100; i++) {
+        const x = (Math.random() - 0.5) * boardSize;
+        const z = (Math.random() - 0.5) * boardSize;
+        // A simple check to avoid spawning trees in the very center
+        if (Math.abs(x) > 5 || Math.abs(z) > 5) {
+            interiorTrees.add(createTree(x, z));
+        }
+    }
+    scene.add(interiorTrees);
 
     // Groups for objects
     playersGroup = new THREE.Group();
@@ -84,17 +130,60 @@ const initThree = () => {
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('resize', onResize);
 
+    // Weather systems
+    initWeatherSystems();
+
     animate();
+};
+
+const initWeatherSystems = () => {
+    const boardSize = props.gameState.boardSize;
+
+    // Rain
+    const rainGeometry = new THREE.BufferGeometry();
+    const rainVertices = [];
+    for (let i = 0; i < 2000; i++) {
+        rainVertices.push(
+            Math.random() * boardSize - boardSize / 2,
+            Math.random() * 20,
+            Math.random() * boardSize - boardSize / 2
+        );
+    }
+    rainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(rainVertices, 3));
+    const rainMaterial = new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.15, transparent: true });
+    rainParticles = new THREE.Points(rainGeometry, rainMaterial);
+    scene.add(rainParticles);
+
+    // Snow
+    const snowGeometry = new THREE.BufferGeometry();
+    const snowVertices = [];
+    for (let i = 0; i < 2000; i++) {
+        snowVertices.push(
+            Math.random() * boardSize - boardSize / 2,
+            Math.random() * 20,
+            Math.random() * boardSize - boardSize / 2
+        );
+    }
+    snowGeometry.setAttribute('position', new THREE.Float32BufferAttribute(snowVertices, 3));
+    const snowMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true });
+    snowParticles = new THREE.Points(snowGeometry, snowMaterial);
+    scene.add(snowParticles);
+
+    // Lightning
+    lightning = new THREE.PointLight(0xccccff, 0, 150);
+    scene.add(lightning);
 };
 
 const createCharacter = (color) => {
     const character = new THREE.Group();
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ color }));
     head.position.y = 0.75;
+    head.castShadow = true;
     character.add(head);
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.4), new THREE.MeshStandardMaterial({ color }));
     body.position.y = 0;
+    body.castShadow = true;
     character.add(body);
 
     return character;
@@ -106,15 +195,18 @@ const createTree = (x, z) => {
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
     const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
     trunk.position.y = 0.25;
+    trunk.castShadow = true;
     tree.add(trunk);
 
     const canopyGeometry = new THREE.ConeGeometry(0.8, 2, 8);
     const canopyMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 });
     const canopy = new THREE.Mesh(canopyGeometry, canopyMaterial);
     canopy.position.y = 1.75;
+    canopy.castShadow = true;
     tree.add(canopy);
 
-    tree.position.set(x, 0, z);
+    const groundY = noise.perlin2(x / 10, z / 10) * 2;
+    tree.position.set(x, groundY, z);
     return tree;
 };
 
@@ -129,7 +221,10 @@ const updateScene = () => {
     for (const id in players) {
         const player = players[id];
         const character = createCharacter(player.color);
-        character.position.set(player.position.x - centerOffset, 0, player.position.y - centerOffset);
+        const x = player.position.x - centerOffset;
+        const z = player.position.y - centerOffset;
+        const y = noise.perlin2(x / 10, z / 10) * 2;
+        character.position.set(x, y, z);
         character.rotation.y = -player.direction; // Rotate character
         playersGroup.add(character);
     }
@@ -138,19 +233,33 @@ const updateScene = () => {
     const mainPlayer = players[props.playerId];
     if (mainPlayer) {
         const head = mainPlayer.position;
-        camera.position.set(head.x - centerOffset, 0.5, head.y - centerOffset);
+        const x = head.x - centerOffset;
+        const z = head.y - centerOffset;
+        let y = noise.perlin2(x / 10, z / 10) * 2;
+
+        // Head bob
+        if (mainPlayer.isMovingForward || mainPlayer.isMovingBackward) {
+            headBobTime += 0.2;
+            y += Math.sin(headBobTime) * 0.05;
+        }
+
+        camera.position.set(x, y + 0.5, z);
 
         // Point camera in the direction of movement
         const lookAtPosition = new THREE.Vector3(
-            head.x - centerOffset + Math.cos(mainPlayer.direction),
-            0.5,
-            head.y - centerOffset + Math.sin(mainPlayer.direction)
+            x + Math.cos(mainPlayer.direction),
+            y + 0.5,
+            z + Math.sin(mainPlayer.direction)
         );
         camera.lookAt(lookAtPosition);
     }
 
     // Update food
-    foodMesh.position.set(food.x - centerOffset, 0, food.y - centerOffset);
+    const foodX = food.x - centerOffset;
+    const foodZ = food.y - centerOffset;
+    const foodY = noise.perlin2(foodX / 10, foodZ / 10) * 2;
+    foodMesh.position.set(foodX, foodY, foodZ);
+    foodMesh.castShadow = true;
 
     // Update obstacles
     obstaclesGroup.clear();
@@ -172,7 +281,11 @@ const updateScene = () => {
                 buffMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00 }); // Green
             }
             const buffMesh = new THREE.Mesh(buffGeometry, buffMaterial);
-            buffMesh.position.set(buff.position.x - centerOffset, 0, buff.position.y - centerOffset);
+            const buffX = buff.position.x - centerOffset;
+            const buffZ = buff.position.y - centerOffset;
+            const buffY = noise.perlin2(buffX / 10, buffZ / 10) * 2;
+            buffMesh.position.set(buffX, buffY, buffZ);
+            buffMesh.castShadow = true;
             buffsGroup.add(buffMesh);
         });
     }
@@ -181,8 +294,73 @@ const updateScene = () => {
 const animate = () => {
     requestAnimationFrame(animate);
     updateScene();
+    updateWeather();
     if (renderer && scene && camera) {
         renderer.render(scene, camera);
+    }
+};
+
+const updateWeather = () => {
+    if (!props.gameState || !props.gameState.weather) return;
+
+    const { weather, nextWeather, weatherTransitionProgress } = props.gameState;
+    const boardSize = props.gameState.boardSize;
+
+    const applyWeather = (type, alpha) => {
+        if (type === 'RAIN') {
+            rainParticles.visible = true;
+            rainParticles.material.opacity = alpha;
+            const positions = rainParticles.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i] -= 0.02; // Angled rain
+                positions[i+1] -= 0.2;
+                if (positions[i+1] < 0) {
+                    positions[i+1] = 20;
+                    positions[i] = Math.random() * boardSize - boardSize / 2;
+                }
+            }
+            rainParticles.geometry.attributes.position.needsUpdate = true;
+        } else if (type === 'SNOW') {
+            snowParticles.visible = true;
+            snowParticles.material.opacity = alpha;
+            const positions = snowParticles.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i] += (Math.random() - 0.5) * 0.02; // Gentle sway
+                positions[i+1] -= 0.08;
+                if (positions[i+1] < 0) {
+                    positions[i+1] = 20;
+                    positions[i] = Math.random() * boardSize - boardSize / 2;
+                }
+            }
+            snowParticles.geometry.attributes.position.needsUpdate = true;
+        } else if (type === 'FOG') {
+            scene.fog = new THREE.Fog(0xcccccc, 0.015, 80 * alpha);
+        } else if (type === 'THUNDERSTORM') {
+             if (!scene.fog) {
+                scene.fog = new THREE.Fog(0x000000, 1, 70);
+            }
+            if (Math.random() > 0.98) {
+                lightning.intensity = Math.random() * 5 * alpha;
+                 lightning.position.set(
+                    Math.random() * boardSize - boardSize / 2,
+                    Math.random() * 20 + 5,
+                    Math.random() * boardSize - boardSize / 2
+                );
+            } else if (lightning.intensity > 0) {
+                lightning.intensity -= 0.2;
+            }
+        }
+    };
+
+    // Hide all weather effects by default
+    rainParticles.visible = false;
+    snowParticles.visible = false;
+    scene.fog = null;
+    lightning.intensity = 0;
+
+    applyWeather(weather, 1 - weatherTransitionProgress);
+    if (nextWeather && weatherTransitionProgress > 0) {
+        applyWeather(nextWeather, weatherTransitionProgress);
     }
 };
 
@@ -190,7 +368,7 @@ const onKeyDown = (event) => {
     if (event.repeat) return;
     switch (event.key.toLowerCase()) {
         case 'w': emit('set-moving', true); break;
-        case 's': emit('set-moving', false); break; // Or handle backward movement
+        case 's': emit('set-moving-backward', true); break;
         case 'a': emit('set-turning', 'LEFT'); break;
         case 'd': emit('set-turning', 'RIGHT'); break;
     }
@@ -198,10 +376,8 @@ const onKeyDown = (event) => {
 
 const onKeyUp = (event) => {
     switch (event.key.toLowerCase()) {
-        case 'w':
-        case 's':
-            emit('set-moving', false);
-            break;
+        case 'w': emit('set-moving', false); break;
+        case 's': emit('set-moving-backward', false); break;
         case 'a':
         case 'd':
             emit('set-turning', 'NONE');
